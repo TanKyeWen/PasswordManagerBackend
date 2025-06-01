@@ -7,25 +7,28 @@ from datetime import datetime
 import encryption_module  # Encryption and decryption functions for credentials
 import logging
 import re # For email validation
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-website_url = 'http://localhost:5173'
+website_url = os.getenv('WEBSITE_URL')
 
 app = Flask(__name__)
-# app.secret_key = 'your-secret-key-here'  # Change this to a secure secret key
+AES_secret_key = os.getenv('AES_SECRET_KEY')
 
 # Configure CORS for your entire app or specific routes
 CORS(app, origins=[website_url], supports_credentials=True)
 
 # Database configuration
 DB_CONFIG = {
-    'host': 'localhost',
-    'port': 3306,  # Default MySQL port
-    'database': 'password_manager_db',
-    'user': 'root',  # Replace with your MySQL username
-    'password': ''  # Replace with your MySQL password
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': int(os.getenv('DB_PORT', 3306)),  # Default MySQL port
+    'database': os.getenv('DB_NAME'), 
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD')
 }
 
 def get_db_connection():
