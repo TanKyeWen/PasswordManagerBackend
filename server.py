@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 import encryption_module  # Encryption and decryption functions for credentials
 import logging
+import jwt
 import re # For email validation
 from dotenv import load_dotenv
 
@@ -106,6 +107,32 @@ def init_database():
         finally:
             cursor.close()
             connection.close()
+
+def add_cors_headers(response):
+    """Add CORS headers to response"""
+    origin = request.headers.get('Origin')
+    response.headers.add('Access-Control-Allow-Origin', os.getenv('WEBSITE_URL'))
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+
+def add_security_headers(response):
+    """Add security headers to response"""
+    response.headers.add('X-Content-Type-Options', 'nosniff')
+    response.headers.add('X-Frame-Options', 'DENY')
+    response.headers.add('X-XSS-Protection', '1; mode=block')
+    response.headers.add('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    response.headers.add('Content-Security-Policy', "default-src 'self'")
+    response.headers.add('Referrer-Policy', 'strict-origin-when-cross-origin')
+
+def validate_jwt_token(token):
+    """Validate JWT token and return user_id if valid"""
+    try:
+        # Replace with your JWT secret
+        payload = jwt.decode(token, os.getenv('JWT_SECRET_TOKEN'), algorithms=['HS256'])
+        return payload.get('user_id')
+    except jwt.InvalidTokenError:
+        return None
 
 @app.route('/api/auth/signin', methods=['POST'])
 def api_signin():
@@ -325,26 +352,41 @@ def api_signup():
         response = jsonify({'error': 'Signup failed'})
         return response, 500
 
-@app.route('/api/vault', methods=['GET'])
+@app.route('/api/vault', methods=['GET', 'OPTIONS'])
 def get_vault_credentials():
     """Get all credentials for the authenticated user"""
+    
+    # Handle preflight OPTIONS request
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+    
     try:
-        data = request.get_json()
+        # For GET requests, check query parameters instead of JSON body
+        user_id_param = request.args.get('user_id')  # Optional: from query params
         
-        # Validate JSON data
-        if not data:
-            response = jsonify({'error': 'Invalid JSON data'})
-            return response, 400
-
-        # Check authentication
+        # Check authentication from session (primary method)
         user_id = session.get('user_id')
         if not user_id:
-            logger.warning(f"Unauthorized vault access attempt from IP: {request.remote_addr}")
-            response = jsonify({
-                'success': False,
-                'error': 'Authentication required'
-            })
-            return response, 401
+            # Check Authorization header as fallback
+            # auth_header = request.headers.get('Authorization')
+            # if auth_header and auth_header.startswith('Bearer '):
+            #     token = auth_header.split(' ')[1]
+            #     user_id = validate_jwt_token(token)  # You'll need to implement this
+            
+            if not user_id:
+                logger.warning(f"Unauthorized vault access attempt from IP: {request.remote_addr}")
+                response = jsonify({
+                    'success': False,
+                    'error': 'Authentication required'
+                })
+                # Add CORS headers to error responses
+                add_cors_headers(response)
+                return response, 401
         
         # Validate user_id
         if not isinstance(user_id, (int, str)) or str(user_id).strip() == '':
@@ -353,7 +395,18 @@ def get_vault_credentials():
                 'success': False,
                 'error': 'Invalid session data'
             })
+            add_cors_headers(response)
             return response, 400
+        
+        # Optional: Verify user_id matches query parameter if provided
+        if user_id_param and str(user_id) != str(user_id_param):
+            logger.warning(f"User {user_id} attempted to access vault for user {user_id_param}")
+            response = jsonify({
+                'success': False,
+                'error': 'Unauthorized access to another user\'s vault'
+            })
+            add_cors_headers(response)
+            return response, 403
         
         connection = get_db_connection()
         if not connection:
@@ -362,6 +415,7 @@ def get_vault_credentials():
                 'success': False,
                 'error': 'Service temporarily unavailable'
             })
+            add_cors_headers(response)
             return response, 503
         
         try:
@@ -369,11 +423,13 @@ def get_vault_credentials():
             
             # Select only necessary fields for vault page
             query = """
-                SELECT 
+                SELECT
                     id,
                     credential_website,
                     credential_username,
-                FROM credentials 
+                    created_at,
+                    updated_at
+                FROM credentials
                 WHERE user_id = %s
                 ORDER BY credential_website ASC
             """
@@ -384,26 +440,34 @@ def get_vault_credentials():
             # Log successful access
             logger.info(f"User {user_id} accessed vault - {len(credentials)} credentials retrieved")
             
-            # Optional: Remove sensitive data for certain use cases
-            # Or add encryption/decryption here if needed
+            # Convert datetime objects to strings for JSON serialization
+            for credential in credentials:
+                if credential.get('created_at'):
+                    credential['created_at'] = credential['created_at'].isoformat()
+                if credential.get('updated_at'):
+                    credential['updated_at'] = credential['updated_at'].isoformat()
             
             response = jsonify({
                 'success': True,
                 'message': f'Retrieved {len(credentials)} credentials',
-                'data': {
-                    'credentials': credentials,
-                    'total_count': len(credentials),
-                    'user_id': user_id
-                }
+                'data': credentials,  # Changed: return array directly, not nested object
+                'total_count': len(credentials),
+                'user_id': user_id
             })
+            
+            # Add security headers
+            add_security_headers(response)
+            add_cors_headers(response)
+            
             return response, 200
             
-        except Error as e:
+        except Exception as e:
             logger.error(f"Database error while fetching credentials for user {user_id}: {e}")
             response = jsonify({
                 'success': False,
                 'error': 'Failed to retrieve credentials'
             })
+            add_cors_headers(response)
             return response, 500
             
         finally:
@@ -418,8 +482,63 @@ def get_vault_credentials():
             'success': False,
             'error': 'An unexpected error occurred'
         })
-        
+        add_cors_headers(response)
         return response, 500
+
+# Additional endpoint for sync functionality
+@app.route('/api/vault/sync', methods=['GET'])
+def get_vault_sync():
+    """Get vault data for sync (with since parameter)"""
+    try:
+        user_id = session.get('user_id')
+        if not user_id:
+            response = jsonify({'success': False, 'error': 'Authentication required'})
+            add_cors_headers(response)
+            return response, 401
+        
+        # Get 'since' parameter for incremental sync
+        since = request.args.get('since', '1970-01-01T00:00:00Z')
+        
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        query = """
+            SELECT
+                id,
+                credential_website,
+                credential_username,
+                created_at,
+                updated_at
+            FROM credentials
+            WHERE user_id = %s AND created_at >= %s
+        """
+        
+        cursor.execute(query, (user_id, since))
+        credentials = cursor.fetchall()
+        
+        # Convert datetime to ISO format
+        for credential in credentials:
+            if credential.get('created_at'):
+                credential['created_at'] = credential['created_at'].isoformat()
+            if credential.get('updated_at'):
+                credential['updated_at'] = credential['updated_at'].isoformat()
+        
+        response = jsonify(credentials)
+        add_security_headers(response)
+        add_cors_headers(response)
+        
+        return response, 200
+        
+    except Exception as e:
+        logger.error(f"Vault sync error: {e}")
+        response = jsonify({'success': False, 'error': 'Sync failed'})
+        add_cors_headers(response)
+        return response, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
 
 # Move to SQLite
 @app.route('/api/credential/<int: id>', methods=['GET'])
