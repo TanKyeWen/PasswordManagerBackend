@@ -913,4 +913,4 @@ def generate_password():
 if __name__ == '__main__':
     # Initialize database on startup
     init_database()
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=9011, debug=True)
