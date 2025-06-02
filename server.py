@@ -498,11 +498,9 @@ def get_vault_sync():
             
             return response, 401
         
-        # Get 'since' parameter for incremental sync
-        since = request.args.get('since', '1970-01-01T00:00:00Z')
-        
         connection = get_db_connection()
         cursor = connection.cursor(dictionary=True)
+        last_sync = request.args.get('lastSync')
         
         query = """
             SELECT
@@ -515,7 +513,7 @@ def get_vault_sync():
             WHERE user_id = %s AND created_at >= %s
         """
         
-        cursor.execute(query, (user_id, since))
+        cursor.execute(query, (user_id, last_sync))
         credentials = cursor.fetchall()
         
         # Convert datetime to ISO format
@@ -527,8 +525,6 @@ def get_vault_sync():
         
         response = jsonify(credentials)
         add_security_headers(response)
-        
-        
         return response, 200
         
     except Exception as e:
