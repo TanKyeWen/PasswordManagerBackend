@@ -21,7 +21,11 @@ app = Flask(__name__)
 AES_secret_key = os.getenv('AES_SECRET_KEY')
 
 # Configure CORS for your entire app or specific routes
-CORS(app, origins=[website_url], supports_credentials=True)
+CORS(app, 
+     origins=[website_url], 
+     supports_credentials=True,
+     allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 
 # Database configuration
 DB_CONFIG = {
@@ -108,22 +112,20 @@ def init_database():
             cursor.close()
             connection.close()
 
-def add_cors_headers(response):
-    """Add CORS headers to response"""
-    origin = request.headers.get('Origin')
-    response.headers.add('Access-Control-Allow-Origin', os.getenv('WEBSITE_URL'))
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
-
+@app.before_request
 def add_security_headers(response):
     """Add security headers to response"""
-    response.headers.add('X-Content-Type-Options', 'nosniff')
-    response.headers.add('X-Frame-Options', 'DENY')
-    response.headers.add('X-XSS-Protection', '1; mode=block')
-    response.headers.add('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
-    response.headers.add('Content-Security-Policy', "default-src 'self'")
-    response.headers.add('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    # More restrictive CSP for better security
+    csp = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;"
+    response.headers['Content-Security-Policy'] = csp
+    
+    return response
 
 def validate_jwt_token(token):
     """Validate JWT token and return user_id if valid"""
@@ -357,13 +359,13 @@ def get_vault_credentials():
     """Get all credentials for the authenticated user"""
     
     # Handle preflight OPTIONS request
-    if request.method == 'OPTIONS':
-        response = jsonify({'status': 'ok'})
-        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-        response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
-        response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
+    # if request.method == 'OPTIONS':
+    #     response = jsonify({'status': 'ok'})
+    #     response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+    #     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
+    #     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+    #     response.headers.add('Access-Control-Allow-Credentials', 'true')
+    #     return response, 200
     
     try:
         # For GET requests, check query parameters instead of JSON body
@@ -385,7 +387,7 @@ def get_vault_credentials():
                     'error': 'Authentication required'
                 })
                 # Add CORS headers to error responses
-                add_cors_headers(response)
+                
                 return response, 401
         
         # Validate user_id
@@ -395,7 +397,7 @@ def get_vault_credentials():
                 'success': False,
                 'error': 'Invalid session data'
             })
-            add_cors_headers(response)
+            
             return response, 400
         
         # Optional: Verify user_id matches query parameter if provided
@@ -405,7 +407,7 @@ def get_vault_credentials():
                 'success': False,
                 'error': 'Unauthorized access to another user\'s vault'
             })
-            add_cors_headers(response)
+            
             return response, 403
         
         connection = get_db_connection()
@@ -415,7 +417,7 @@ def get_vault_credentials():
                 'success': False,
                 'error': 'Service temporarily unavailable'
             })
-            add_cors_headers(response)
+            
             return response, 503
         
         try:
@@ -457,7 +459,7 @@ def get_vault_credentials():
             
             # Add security headers
             add_security_headers(response)
-            add_cors_headers(response)
+            
             
             return response, 200
             
@@ -467,7 +469,7 @@ def get_vault_credentials():
                 'success': False,
                 'error': 'Failed to retrieve credentials'
             })
-            add_cors_headers(response)
+            
             return response, 500
             
         finally:
@@ -482,7 +484,7 @@ def get_vault_credentials():
             'success': False,
             'error': 'An unexpected error occurred'
         })
-        add_cors_headers(response)
+        
         return response, 500
 
 # Additional endpoint for sync functionality
@@ -493,7 +495,7 @@ def get_vault_sync():
         user_id = session.get('user_id')
         if not user_id:
             response = jsonify({'success': False, 'error': 'Authentication required'})
-            add_cors_headers(response)
+            
             return response, 401
         
         # Get 'since' parameter for incremental sync
@@ -525,14 +527,14 @@ def get_vault_sync():
         
         response = jsonify(credentials)
         add_security_headers(response)
-        add_cors_headers(response)
+        
         
         return response, 200
         
     except Exception as e:
         logger.error(f"Vault sync error: {e}")
         response = jsonify({'success': False, 'error': 'Sync failed'})
-        add_cors_headers(response)
+        
         return response, 500
     finally:
         if cursor:
