@@ -136,18 +136,36 @@ def validate_jwt_token(token):
     except jwt.InvalidTokenError:
         return None
 
+@app.route('/api/session', methods=['GET'])
+def get_session():
+    """Get session information"""
+    try:
+        user_id = session.get('user_id')
+        username = session.get('username')
+        
+        if not user_id or not username:
+            response = jsonify({'error': 'No active session found'})
+            return response, 404
+        
+        response = jsonify({
+            'user_id': user_id,
+            'username': username
+        })
+        
+        # Add security headers
+        add_security_headers(response)
+        
+        return response, 200
+        
+    except Exception as e:
+        logger.error(f"Error retrieving session: {e}")
+        response = jsonify({'error': 'Failed to retrieve session'})
+        
+        return response, 500
+
 @app.route('/api/auth/signin', methods=['POST'])
 def api_signin():
     """API endpoint for Vue.js authentication"""
-    
-    # Enable CORS for Vue.js
-    response_headers = {
-        'Access-Control-Allow-Origin': website_url,
-        'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Content-Type': 'application/json'
-    }
-    
     try:
         data = request.get_json()
         
@@ -357,20 +375,7 @@ def api_signup():
 @app.route('/api/vault', methods=['GET', 'OPTIONS'])
 def get_vault_credentials():
     """Get all credentials for the authenticated user"""
-    
-    # Handle preflight OPTIONS request
-    # if request.method == 'OPTIONS':
-    #     response = jsonify({'status': 'ok'})
-    #     response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
-    #     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-    #     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
-    #     response.headers.add('Access-Control-Allow-Credentials', 'true')
-    #     return response, 200
-    
     try:
-        # For GET requests, check query parameters instead of JSON body
-        user_id_param = request.args.get('user_id')  # Optional: from query params
-        
         # Check authentication from session (primary method)
         user_id = session.get('user_id')
         if not user_id:
@@ -399,16 +404,6 @@ def get_vault_credentials():
             })
             
             return response, 400
-        
-        # Optional: Verify user_id matches query parameter if provided
-        if user_id_param and str(user_id) != str(user_id_param):
-            logger.warning(f"User {user_id} attempted to access vault for user {user_id_param}")
-            response = jsonify({
-                'success': False,
-                'error': 'Unauthorized access to another user\'s vault'
-            })
-            
-            return response, 403
         
         connection = get_db_connection()
         if not connection:
@@ -459,7 +454,6 @@ def get_vault_credentials():
             
             # Add security headers
             add_security_headers(response)
-            
             
             return response, 200
             
