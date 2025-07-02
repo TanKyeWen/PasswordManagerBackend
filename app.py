@@ -1,9 +1,10 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_cors import CORS
+from functools import wraps
 import mysql.connector
 from mysql.connector import Error
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import encryption_module  # Encryption and decryption functions for credentials
 import logging
 import jwt
@@ -19,14 +20,23 @@ website_url = os.getenv('WEBSITE_URL')
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SESSION_SECRET_KEY')
+app.config['SECRET_KEY'] = os.getenv('SESSION_SECRET_KEY')
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True if using HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_DOMAIN'] = None  # Let Flask handle this automatically
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)  # Adjust as needed
+
 AES_secret_key = os.getenv('AES_SECRET_KEY')
 
 # Configure CORS for your entire app or specific routes
-CORS(app, 
-     origins=[website_url], 
+CORS(app,
+     origins=[website_url],
      supports_credentials=True,
-     allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
-     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
+     allow_headers=['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+     expose_headers=['Set-Cookie'],
+     max_age=3600)
 
 # Database configuration
 DB_CONFIG = {
@@ -113,6 +123,47 @@ def init_database():
             cursor.close()
             connection.close()
 
+def require_auth(f):
+    """Decorator to require authentication for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+            
+        try:
+            # Your existing auth logic here...
+            user_id = session.get('user_id')
+            
+            if user_id is None:
+                if user_id is None:
+                    logger.warning(f"Unauthorized access attempt to {request.endpoint} from IP: {request.remote_addr}")
+                    return jsonify({
+                        'success': False,
+                        'error': 'Authentication required'
+                    }), 401
+            
+            # Validate user_id (more robust validation)
+            if not user_id or (isinstance(user_id, str) and user_id.strip() == ''):
+                logger.error(f"Invalid user_id in session: {user_id}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid session data'
+                }), 400
+            
+            # Add user_id to request context for easy access
+            request.current_user_id = user_id
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            logger.error(f"Authentication error in {request.endpoint}: {str(e)}")
+            return jsonify({
+                'success': False,
+                'error': 'Authentication error'
+            }), 500
+    
+    return decorated_function
+
 # def validate_jwt_token(token):
 #     """Validate JWT token and return user_id if valid"""
 #     try:
@@ -122,32 +173,33 @@ def init_database():
 #     except jwt.InvalidTokenError:
 #         return None
 
-@app.route('/api/session', methods=['GET'])
+@app.route('/api/user/session', methods=['GET', 'OPTIONS'])
+@require_auth
 def get_session():
-    """Get session information"""
+    """Get current session information"""
+    
+    # Handle OPTIONS request for CORS
+    if request.method == 'OPTIONS':
+        return jsonify({'success': True}), 200
+    
     try:
-        user_id = session.get('user_id')
+        user_id = request.current_user_id
         username = session.get('username')
         
-        if not user_id or not username:
-            response = jsonify({'error': 'No active session found'})
-            return response, 404
-        
-        response = jsonify({
-            'user_id': user_id,
-            'username': username
-        })
-        
-        # Add security headers
-        # add_security_headers(response)
-        
-        return response, 200
+        return jsonify({
+            'success': True,
+            'data': {
+                'user_id': user_id,
+                'username': username
+            }
+        }), 200
         
     except Exception as e:
-        logger.error(f"Error retrieving session: {e}")
-        response = jsonify({'error': 'Failed to retrieve session'})
-        
-        return response, 500
+        logger.error(f"Error in session endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to retrieve session data'
+        }), 500
 
 @app.route('/api/auth/signin', methods=['POST'])
 def api_signin():
@@ -396,47 +448,26 @@ def api_signout():
         return response, 500
 
 @app.route('/api/vault', methods=['GET', 'OPTIONS'])
+@require_auth
 def get_vault_credentials():
     """Get all credentials for the authenticated user"""
+    
+    # Handle OPTIONS request for CORS
+    if request.method == 'OPTIONS':
+        return jsonify({'success': True}), 200
+    
     try:
-        # Check authentication from session (primary method)
-        user_id = session.get('user_id')
-        if not user_id:
-            # Check Authorization header as fallback
-            # auth_header = request.headers.get('Authorization')
-            # if auth_header and auth_header.startswith('Bearer '):
-            #     token = auth_header.split(' ')[1]
-            #     user_id = validate_jwt_token(token)  # You'll need to implement this
-            
-            if not user_id:
-                logger.warning(f"Unauthorized vault access attempt from IP: {request.remote_addr}")
-                response = jsonify({
-                    'success': False,
-                    'error': 'Authentication required'
-                })
-                # Add CORS headers to error responses
-                
-                return response, 401
+        # Get the authenticated user_id from the decorator
+        user_id = request.current_user_id
         
-        # Validate user_id
-        if not isinstance(user_id, (int, str)) or str(user_id).strip() == '':
-            logger.error(f"Invalid user_id in session: {user_id}")
-            response = jsonify({
-                'success': False,
-                'error': 'Invalid session data'
-            })
-            
-            return response, 400
-        
+        # Get database connection
         connection = get_db_connection()
         if not connection:
             logger.error("Database connection failed for vault access")
-            response = jsonify({
+            return jsonify({
                 'success': False,
                 'error': 'Service temporarily unavailable'
-            })
-            
-            return response, 503
+            }), 503
         
         try:
             cursor = connection.cursor(dictionary=True)
@@ -445,13 +476,13 @@ def get_vault_credentials():
             query = """
                 SELECT
                     id,
+                    user_id,
                     credential_website,
                     credential_username,
-                    created_at,
-                    updated_at
+                    credential_password
                 FROM credentials
                 WHERE user_id = %s
-                ORDER BY credential_website ASC
+                ORDER BY id ASC
             """
             
             cursor.execute(query, (user_id,))
@@ -467,42 +498,33 @@ def get_vault_credentials():
                 if credential.get('updated_at'):
                     credential['updated_at'] = credential['updated_at'].isoformat()
             
-            response = jsonify({
+            return jsonify({
                 'success': True,
                 'message': f'Retrieved {len(credentials)} credentials',
-                'data': credentials,  # Changed: return array directly, not nested object
+                'data': credentials,
                 'total_count': len(credentials),
                 'user_id': user_id
-            })
+            }), 200
             
-            # Add security headers
-            # add_security_headers(response)
-            
-            return response, 200
-            
-        except Exception as e:
-            logger.error(f"Database error while fetching credentials for user {user_id}: {e}")
-            response = jsonify({
+        except Exception as db_error:
+            logger.error(f"Database error in vault access for user {user_id}: {str(db_error)}")
+            return jsonify({
                 'success': False,
                 'error': 'Failed to retrieve credentials'
-            })
-            
-            return response, 500
+            }), 500
             
         finally:
-            if cursor:
+            if 'cursor' in locals():
                 cursor.close()
             if connection:
                 connection.close()
-    
+                
     except Exception as e:
-        logger.error(f"Unexpected error in vault access: {e}")
-        response = jsonify({
+        logger.error(f"Unexpected error in vault endpoint: {str(e)}")
+        return jsonify({
             'success': False,
-            'error': 'An unexpected error occurred'
-        })
-        
-        return response, 500
+            'error': 'Internal server error'
+        }), 500
 
 # Additional endpoint for sync functionality
 # @app.route('/api/vault/sync', methods=['GET'])
