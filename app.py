@@ -26,6 +26,11 @@ app.config['SESSION_COOKIE_SECURE'] = False  # Set to True if using HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_DOMAIN'] = None  # Let Flask handle this automatically
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)  # Adjust as needed
+app.config.update(
+    SESSION_COOKIE_SAMESITE='None',
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True
+)
 
 AES_secret_key = os.getenv('AES_SECRET_KEY')
 
@@ -399,7 +404,7 @@ def api_signup():
                 'success': True,
                 'message': 'User registered successfully',
                 'user': {
-                    'id': user_id,
+                    'user_id': user_id,
                     'username': username,
                     'email': email
                 }
