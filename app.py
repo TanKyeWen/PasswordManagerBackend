@@ -698,8 +698,115 @@ def add_credential():
         }), 500
 
 @app.route('/api/credential/<int:c_id>', methods=['PUT'])
+@require_auth
 def update_credential(c_id):
     """Update a credential for the authenticated user"""
+    try:
+        data = request.get_json()
+        
+        # Validate JSON data
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid JSON data'}), 400
+        
+        # Get the authenticated user_id from the decorator
+        user_id = request.current_user_id
+        
+        # Get database connection
+        connection = get_db_connection()
+        if not connection:
+            logger.error("Database connection failed for vault access")
+            return jsonify({
+                'success': False,
+                'error': 'Service temporarily unavailable'
+            }), 503
+
+        try:
+            cursor = connection.cursor(dictionary=True)
+            
+            # Validate input data
+            if not data.get('credential_website') or not data.get('credential_username') or not data.get('credential_password'):
+                return jsonify({
+                    'success': False, 
+                    'error': 'Website, username, and password are required'
+                }), 400
+            
+            # Validate if the credential already exists for the user
+            validate_query = """
+                SELECT
+                    credential_website
+                FROM credentials 
+                WHERE user_id = %s AND id = %s
+                LIMIT 1
+            """
+            cursor.execute(validate_query, (user_id, c_id))
+            credential = cursor.fetchone()
+            
+            if not credential:
+                return jsonify({
+                    'success': False,
+                    'error': 'Credential already exists for this user with the same website and username'
+                }), 409
+            
+            # Validate the requested user
+            if user_id != data.get('user_id'):
+                logger.warning(f"Unauthorized access attempt to update credential by user {user_id}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Unauthorized access to credential'
+                }), 403
+
+            # Insert new credential
+            update_query = """
+                UPDATE credentials
+                SET credential_website = %s, credential_username = %s, credential_password = %s, updated_at = %s
+                WHERE id = %s AND user_id = %s
+            """
+
+            datetime_now = datetime.now()
+            encrypted_password = encryption_module.encrypt_password(data.get('credential_password', ''), AES_secret_key)
+
+            cursor.execute(update_query, (
+                data.get('credential_website', ''),
+                data.get('credential_username', ''),
+                encrypted_password,
+                datetime_now,
+                c_id,
+                user_id
+            ))
+            connection.commit()
+            
+            # Log successful addition
+            logger.info(f"User {user_id} updated new credential with ID {c_id}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Credential updated successfully with ID {c_id}',
+                'data': {
+                    'credential_id': c_id,
+                    'user_id': user_id,
+                    'encrypted_password': encrypted_password,
+                }
+            }), 201
+            
+        except Exception as db_error:
+            logger.error(f"Database error in vault access for user {user_id}: {str(db_error)}")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to update credential'
+            }), 500
+            
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+            if connection:
+                connection.close()
+                
+    except Exception as e:
+        logger.error(f"Unexpected error in vault endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
 
 @app.route('/api/credential/<int:c_id>', methods=['DELETE'])
 @require_auth
