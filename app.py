@@ -141,12 +141,11 @@ def require_auth(f):
             user_id = session.get('user_id')
             
             if user_id is None:
-                if user_id is None:
-                    logger.warning(f"Unauthorized access attempt to {request.endpoint} from IP: {request.remote_addr}")
-                    return jsonify({
-                        'success': False,
-                        'error': 'Authentication required'
-                    }), 401
+                logger.warning(f"Unauthorized access attempt to {request.endpoint} from IP: {request.remote_addr}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Authentication required'
+                }), 401
             
             # Validate user_id (more robust validation)
             if not user_id or (isinstance(user_id, str) and user_id.strip() == ''):
@@ -531,6 +530,81 @@ def get_vault_credentials():
             'error': 'Internal server error'
         }), 500
 
+@app.route('/api/credential/<int:c_id>', methods=['DELETE'])
+@require_auth
+def delete_credential(c_id):
+    """Delete a credential for the authenticated user"""
+    try:
+        # Get the authenticated user_id from the decorator
+        user_id = request.current_user_id
+        
+        # Get database connection
+        connection = get_db_connection()
+        if not connection:
+            logger.error("Database connection failed for vault access")
+            return jsonify({
+                'success': False,
+                'error': 'Service temporarily unavailable'
+            }), 503
+        
+        try:
+            cursor = connection.cursor(dictionary=True)
+            
+            # Validate owner of the credential
+            validate_query = """
+                SELECT
+                    id
+                FROM credentials 
+                WHERE id = %s AND user_id = %s
+                LIMIT 1
+            """
+            cursor.execute(validate_query, (c_id, user_id))
+            credential = cursor.fetchone()
+            
+            if not credential:
+                return jsonify({
+                    'success': False,
+                    'error': 'Credential not found or access denied'
+                }), 404
+            
+            # Now delete the credential
+            delete_query = """
+                DELETE FROM credentials
+                WHERE id = %s AND user_id = %s
+            """
+
+            cursor.execute(delete_query, (c_id, user_id))
+            connection.commit()
+            
+            # Log authorized access attempts
+            logger.info(f"User {user_id} delete credential {c_id}")
+
+            return jsonify({
+                'success': True,
+                'message': 'Credential deleted successfully'
+            }), 200
+            
+        except Exception as db_error:
+            logger.error(f"Database error in vault access for user {user_id}: {str(db_error)}")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to retrieve credentials'
+            }), 500
+            
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+            if connection:
+                connection.close()
+                
+    except Exception as e:
+        logger.error(f"Unexpected error in vault endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+
 # Additional endpoint for sync functionality
 # @app.route('/api/vault/sync', methods=['GET'])
 # def get_vault_sync():
@@ -822,128 +896,128 @@ def get_vault_credentials():
 # # Move to SQLite
 # @app.route('/api/credential', methods=['POST'])
 # def add_credential(c_id):
-#     """Add credentials for the authenticated user"""
-#     try:
-#         data = request.get_json()
+    """Add credentials for the authenticated user"""
+    try:
+        data = request.get_json()
         
-#         # Validate JSON data
-#         if not data:
-#             response = jsonify({'error': 'Invalid JSON data'})
-#             return response, 400
+        # Validate JSON data
+        if not data:
+            response = jsonify({'error': 'Invalid JSON data'})
+            return response, 400
 
-#         # Check authentication
-#         user_id = session.get('user_id')
-#         if not user_id:
-#             logger.warning(f"Unauthorized vault access attempt from IP: {request.remote_addr}")
-#             response = jsonify({
-#                 'success': False,
-#                 'error': 'Authentication required'
-#             })
-#             return response, 401
+        # Check authentication
+        user_id = session.get('user_id')
+        if not user_id:
+            logger.warning(f"Unauthorized vault access attempt from IP: {request.remote_addr}")
+            response = jsonify({
+                'success': False,
+                'error': 'Authentication required'
+            })
+            return response, 401
         
-#         # Validate user_id
-#         if not isinstance(user_id, (int, str)) or str(user_id).strip() == '':
-#             logger.error(f"Invalid user_id in session: {user_id}")
-#             response = jsonify({
-#                 'success': False,
-#                 'error': 'Invalid session data'
-#             })
-#             return response, 400
+        # Validate user_id
+        if not isinstance(user_id, (int, str)) or str(user_id).strip() == '':
+            logger.error(f"Invalid user_id in session: {user_id}")
+            response = jsonify({
+                'success': False,
+                'error': 'Invalid session data'
+            })
+            return response, 400
         
-#         connection = get_db_connection()
-#         if not connection:
-#             logger.error("Database connection failed for vault access")
-#             response = jsonify({
-#                 'success': False,
-#                 'error': 'Service temporarily unavailable'
-#             })
-#             return response, 503
+        connection = get_db_connection()
+        if not connection:
+            logger.error("Database connection failed for vault access")
+            response = jsonify({
+                'success': False,
+                'error': 'Service temporarily unavailable'
+            })
+            return response, 503
         
-#         try:
-#             cursor = connection.cursor(dictionary=True)
+        try:
+            cursor = connection.cursor(dictionary=True)
             
-#             # Validate owner of the credential
-#             validate_query = """
-#                 SELECT user_id
-#                 FROM credentials 
-#                 WHERE id = %s
-#             """
-#             cursor.execute(validate_query, (c_id,))
-#             owner = cursor.fetchone()
+            # Validate owner of the credential
+            validate_query = """
+                SELECT user_id
+                FROM credentials 
+                WHERE id = %s
+            """
+            cursor.execute(validate_query, (c_id,))
+            owner = cursor.fetchone()
             
-#             if not owner or owner['user_id'] != user_id:
-#                 logger.warning(f"Unauthorized access attempt to credential {c_id} by user {user_id}")
-#                 response = jsonify({
-#                     'success': False,
-#                     'error': 'Unauthorized access to credential'
-#                 })
-#                 return response, 403
+            if not owner or owner['user_id'] != user_id:
+                logger.warning(f"Unauthorized access attempt to credential {c_id} by user {user_id}")
+                response = jsonify({
+                    'success': False,
+                    'error': 'Unauthorized access to credential'
+                })
+                return response, 403
             
-#             # Validate input data
-#             if not data.get('credential_website') or not data.get('credential_username') or not data.get('credential_password'):
-#                 response = jsonify({'error': 'Website, username, and password are required'})
-#                 return response, 400
+            # Validate input data
+            if not data.get('credential_website') or not data.get('credential_username') or not data.get('credential_password'):
+                response = jsonify({'error': 'Website, username, and password are required'})
+                return response, 400
             
-#             # Update credential
-#             add_query = """
-#                 INSERT INTO credentials (user_id, credential_website, credential_username, credential_password, created_at, created_ip_address)
-#                 VALUES (%s, %s, %s, %s, %s, %s)
-#             """
+            # Update credential
+            add_query = """
+                INSERT INTO credentials (user_id, credential_website, credential_username, credential_password, created_at, created_ip_address)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
             
-#             cursor.execute(add_query, (
-#                 user_id, 
-#                 data.get('credential_website', ''),
-#                 data.get('credential_username', ''),
-#                 data.get('credential_password', ''), 
-#                 datetime.now(), 
-#                 c_id, 
-#                 user_id))
-#             connection.commit()
+            cursor.execute(add_query, (
+                user_id, 
+                data.get('credential_website', ''),
+                data.get('credential_username', ''),
+                data.get('credential_password', ''), 
+                datetime.now(), 
+                c_id, 
+                user_id))
+            connection.commit()
             
-#             # Check if any rows were affected
-#             if cursor.rowcount == 0:
-#                 return jsonify({'error': 'Credential not found or no changes made'}), 404
+            # Check if any rows were affected
+            if cursor.rowcount == 0:
+                return jsonify({'error': 'Credential not found or no changes made'}), 404
 
-#             # Log successful update
-#             logger.info(f"User {user_id} updated credential - {c_id}")
+            # Log successful update
+            logger.info(f"User {user_id} updated credential - {c_id}")
             
-#             # Optional: Remove sensitive data for certain use cases
-#             # Or add encryption/decryption here if needed
+            # Optional: Remove sensitive data for certain use cases
+            # Or add encryption/decryption here if needed
             
-#             response = jsonify({
-#                 'success': True,
-#                 'message': f'Updated credential: {c_id}',
-#                 'data': {
-#                     'updated_credential': c_id,
-#                     'user_id': user_id
-#                 }
-#             })
+            response = jsonify({
+                'success': True,
+                'message': f'Updated credential: {c_id}',
+                'data': {
+                    'updated_credential': c_id,
+                    'user_id': user_id
+                }
+            })
             
-#             return response, 200
+            return response, 200
             
-#         except Error as e:
-#             logger.error(f"Database error while fetching credentials for user {user_id}: {e}")
-#             response = jsonify({
-#                 'success': False,
-#                 'error': 'Failed to retrieve credentials'
-#             })
+        except Error as e:
+            logger.error(f"Database error while fetching credentials for user {user_id}: {e}")
+            response = jsonify({
+                'success': False,
+                'error': 'Failed to retrieve credentials'
+            })
             
-#             return response, 500
+            return response, 500
             
-#         finally:
-#             if cursor:
-#                 cursor.close()
-#             if connection:
-#                 connection.close()
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
     
-#     except Exception as e:
-#         logger.error(f"Unexpected error in credential access: {e}")
-#         response = jsonify({
-#             'success': False,
-#             'error': 'An unexpected error occurred'
-#         })
+    except Exception as e:
+        logger.error(f"Unexpected error in credential access: {e}")
+        response = jsonify({
+            'success': False,
+            'error': 'An unexpected error occurred'
+        })
         
-#         return response, 500
+        return response, 500
 
 # @app.route('/api/generate-password', methods=['GET'])
 # def generate_password():
