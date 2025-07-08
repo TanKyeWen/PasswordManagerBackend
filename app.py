@@ -102,20 +102,6 @@ def init_database():
             """
             logger.info("Create Credentials table SQL: %s", create_credentials_table)
 
-            # Create Encryption key table
-            create_encryption_key_table = """
-            CREATE TABLE IF NOT EXISTS encryption_keys (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                user_id INT NOT NULL,
-                c_id INT NOT NULL,
-                encryption_key VARCHAR(255) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(uid) ON DELETE CASCADE
-                FOREIGN KEY (c_id) REFERENCES credentials(id) ON DELETE CASCADE
-            )
-            """
-            logger.info("Create Encryption Keys table SQL: %s", create_encryption_key_table)
-
             # Execute separately
             cursor.execute(create_users_table)
             cursor.execute(create_credentials_table)
@@ -530,6 +516,166 @@ def get_vault_credentials():
             'error': 'Internal server error'
         }), 500
 
+@app.route('/api/credential/decrypt/<int:c_id>', methods=['GET'])
+@require_auth
+def decrypt_password(c_id):
+    """Decrypt a password for the authenticated user"""
+    try:
+        # Get the authenticated user_id from the decorator
+        user_id = request.current_user_id
+        
+        # Get database connection
+        connection = get_db_connection()
+        if not connection:
+            logger.error("Database connection failed for vault access")
+            return jsonify({
+                'success': False,
+                'error': 'Service temporarily unavailable'
+            }), 503
+        
+        try:
+            cursor = connection.cursor(dictionary=True)
+            
+            # Validate owner of the credential
+            validate_query = """
+                SELECT
+                    id, credential_password
+                FROM credentials 
+                WHERE id = %s AND user_id = %s
+                LIMIT 1
+            """
+            cursor.execute(validate_query, (c_id, user_id))
+            credential = cursor.fetchone()
+            
+            if not credential:
+                return jsonify({
+                    'success': False,
+                    'error': 'Credential not found'
+                }), 404
+            
+            # Decrypt the password
+            decrypted_password = encryption_module.decrypt_password(credential['credential_password'], AES_secret_key)
+            
+            return jsonify({
+                'success': True,
+                'message': f'Decrypted password for credential {c_id}',
+                'data': {
+                    'credential_id': c_id,
+                    'decrypted_password': decrypted_password
+                }
+            }), 200
+            
+        except Exception as db_error:
+            logger.error(f"Database error in vault access for user {user_id}: {str(db_error)}")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to decrypt password'
+            }), 500
+            
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+            if connection:
+                connection.close()
+    except Exception as e:
+        logger.error(f"Unexpected error in vault endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+@app.route('/api/credential', methods=['POST'])
+@require_auth
+def add_credential():
+    """Add a new credential for the authenticated user"""
+    try:
+        data = request.get_json()
+        
+        # Validate JSON data
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid JSON data'}), 400
+        
+        # Get the authenticated user_id from the decorator
+        user_id = request.current_user_id
+        
+        # Get database connection
+        connection = get_db_connection()
+        if not connection:
+            logger.error("Database connection failed for vault access")
+            return jsonify({
+                'success': False,
+                'error': 'Service temporarily unavailable'
+            }), 503
+
+        try:
+            cursor = connection.cursor(dictionary=True)
+            
+            # Validate input data
+            if not data.get('credential_website') or not data.get('credential_username') or not data.get('credential_password'):
+                return jsonify({
+                    'success': False, 
+                    'error': 'Website, username, and password are required'
+                }), 400
+            
+            # Insert new credential
+            insert_query = """
+                INSERT INTO credentials (user_id, credential_website, credential_username, credential_password, created_at, created_ip_address)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
+
+            datetime_now = datetime.now()
+            encrypted_password = encryption_module.encrypt_password(data.get('credential_password', ''), AES_secret_key)
+            ip_address = request.remote_addr
+
+            cursor.execute(insert_query, (
+                user_id,
+                data.get('credential_website', ''),
+                data.get('credential_username', ''),
+                encrypted_password,
+                datetime_now,
+                ip_address  # Store the IP address of the request
+            ))
+            connection.commit()
+            
+            new_credential_id = cursor.lastrowid
+            
+            # Log successful addition
+            logger.info(f"User {user_id} added new credential with ID {new_credential_id}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Credential added successfully with ID {new_credential_id}',
+                'data': {
+                    'credential_id': new_credential_id,
+                    'user_id': user_id,
+                    'encrypted_password': encrypted_password,
+                }
+            }), 201
+            
+        except Exception as db_error:
+            logger.error(f"Database error in vault access for user {user_id}: {str(db_error)}")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to add credential'
+            }), 500
+            
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
+            if connection:
+                connection.close()
+                
+    except Exception as e:
+        logger.error(f"Unexpected error in vault endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
+@app.route('/api/credential/<int:c_id>', methods=['PUT'])
+def update_credential(c_id):
+    """Update a credential for the authenticated user"""
+
 @app.route('/api/credential/<int:c_id>', methods=['DELETE'])
 @require_auth
 def delete_credential(c_id):
@@ -564,7 +710,7 @@ def delete_credential(c_id):
             if not credential:
                 return jsonify({
                     'success': False,
-                    'error': 'Credential not found or access denied'
+                    'error': 'Credential not found'
                 }), 404
             
             # Now delete the credential
