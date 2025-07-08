@@ -617,6 +617,31 @@ def add_credential():
                     'error': 'Website, username, and password are required'
                 }), 400
             
+            # Validate if the credential already exists for the user
+            validate_query = """
+                SELECT
+                    id
+                FROM credentials 
+                WHERE user_id = %s AND credential_website = %s AND credential_username = %s
+                LIMIT 1
+            """
+            cursor.execute(validate_query, (user_id, data.get('credential_website', ''), data.get('credential_username', '')))
+            credential = cursor.fetchone()
+            
+            if credential:
+                return jsonify({
+                    'success': False,
+                    'error': 'Credential already exists for this user with the same website and username'
+                }), 409
+            
+            # Validate the requested user
+            if user_id != data.get('user_id'):
+                logger.warning(f"Unauthorized access attempt to add credential by user {user_id}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Unauthorized access to credential'
+                }), 403
+
             # Insert new credential
             insert_query = """
                 INSERT INTO credentials (user_id, credential_website, credential_username, credential_password, created_at, created_ip_address)
@@ -712,6 +737,24 @@ def delete_credential(c_id):
                     'success': False,
                     'error': 'Credential not found'
                 }), 404
+            
+            # Validate the requested user
+            validate_query = """
+                SELECT
+                    user_id
+                FROM credentials
+                WHERE id = %s
+                LIMIT 1
+            """
+            cursor.execute(validate_query, (c_id))
+            credential = cursor.fetchone()
+
+            if user_id != credential['user_id']:
+                logger.warning(f"Unauthorized access attempt to delete credential {c_id} by user {user_id}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Unauthorized access to credential'
+                }), 403
             
             # Now delete the credential
             delete_query = """
