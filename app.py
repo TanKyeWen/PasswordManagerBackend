@@ -32,7 +32,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True
 )
 
-AES_secret_key = os.getenv('AES_SECRET_KEY')
+AES_secret_key = bytes.fromhex(os.getenv('AES_SECRET_KEY'))
 
 # Configure CORS for your entire app or specific routes
 CORS(app,
