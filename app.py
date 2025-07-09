@@ -6,6 +6,7 @@ from mysql.connector import Error
 import os
 from datetime import datetime, timedelta
 import encryption_module  # Encryption and decryption functions for credentials
+import password_generation_module  # Password generation functions
 import logging
 import jwt
 import re # For email validation
@@ -1315,10 +1316,79 @@ def delete_credential(c_id):
         
         return response, 500
 
-# @app.route('/api/generate-password', methods=['GET'])
-# def generate_password():
-#     """Generate a random password"""
-#     return 0
+@app.route('/api/generate-password', methods=['GET'])
+@require_auth
+def generate_password():
+    """Generate a random password"""
+    try:
+        data = request.get_json()
+        
+        # Validate JSON data
+        if not data:
+            return jsonify({'success': False, 'error': 'Invalid JSON data'}), 400
+        
+        # Get the authenticated user_id from the decorator
+        user_id = request.current_user_id
+        
+        # Get the password generation method
+        if not data.get('method'):
+            return jsonify({'success': False, 'error': 'Password generation method is required'}), 400
+        
+        generation_method = data.get('method')
+            
+        # Get the password generation parameters
+        if not data.get('cap') or not data.get('nonCap') or not data.get('specialChar'):
+            return jsonify({'success': False, 'error': 'Password generation parameters are required'}), 400
+        
+        cap_alphabet = bool(data.get('cap'))
+        lower_alphabet = bool(data.get('nonCap'))
+        special_char = bool(data.get('specialChar'))
+
+        if (generation_method == 'passphrase'):
+            # Generate a passphrase
+            password = password_generation_module.passphrase_generator(
+                noWords=4, 
+                capAlphabet=cap_alphabet, 
+                lowerAlphabet=lower_alphabet, 
+                specialChar=special_char
+            )
+
+            logger.info(f"User {user_id} generated new PASSPHRASE password")
+            return jsonify({
+                'success': True,
+                'message': f'Password generated successfully by user {user_id}',
+                'data': {
+                    'user_id': user_id,
+                    'password': password,
+                }
+            }), 201
+        
+        elif (generation_method == 'default'):
+            # Generate a default password
+            password = password_generation_module.password_generator(
+                maxLength=16, 
+                minLength=8, 
+                capAlphabet=cap_alphabet, 
+                lowerAlphabet=lower_alphabet, 
+                specialChar=special_char
+            )
+
+            logger.info(f"User {user_id} generated new DEFAULT password")
+            return jsonify({
+                'success': True,
+                'message': f'Password generated successfully by user {user_id}',
+                'data': {
+                    'user_id': user_id,
+                    'password': password,
+                }
+            }), 201
+                
+    except Exception as e:
+        logger.error(f"Unexpected error in vault endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
 
 if __name__ == '__main__':
     # Initialize database on startup

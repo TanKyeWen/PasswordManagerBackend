@@ -7,11 +7,10 @@ def get_word_list():
     # Load a word list from a file or define it directly
     # For simplicity, we can use a small sample list here
     return [
-        "apple", "banana", "cherry", "date", "elderberry",
-        "fig", "grape", "honeydew", "kiwi", "lemon",
-        "mango", "nectarine", "orange", "papaya", "quince",
-        "raspberry", "strawberry", "tangerine", "ugli", "vanilla",
-        "watermelon"
+        "raid", "tooth", "hour", "pair", "offspring", "dimension", "evolution",
+        "fail", "superior", "provide", "researcher", "spirit", "inquiry", "horn",
+        "drawing", "yard", "wolf", "prove", "recruit", "breed", "enlarge",
+        "conception", "tumble", "incident", "acid", "sail", "sacrifice", "treaty", "cattle",
     ]
 
 # User selected option
@@ -40,11 +39,21 @@ def random_capitalisation(text):
             text[i] = text[i].upper()
     return text
 
+def get_char_set(capAlphabet=True, lowerAlphabet=True, specialChar=True):
+    # Define the character set based on user preferences
+    charSet = ''
+    if capAlphabet:
+        charSet += string.ascii_uppercase
+    if lowerAlphabet:
+        charSet += string.ascii_lowercase
+    if specialChar:
+        charSet += string.punctuation
+    return charSet
+
 # noWords = Number of words to be included in the password
-# noReplacements = How many characters to be replaced by its special character equivalant
-def passphrase_generator(noWords=4, noReplacements=3):
+def passphrase_generator(noWords=4, capAlphabet=True, lowerAlphabet=True, specialChar=True):
     # Define the Alphabets, Numbers and Special Character for random word generation using secrets
-    alphabet = string.ascii_letters + string.digits
+    alphabet = get_char_set(capAlphabet, lowerAlphabet, specialChar)
 
     wordList = get_word_list()
 
@@ -59,7 +68,7 @@ def passphrase_generator(noWords=4, noReplacements=3):
         passwordList = list(password.lower())
 
         # Add random capitalization and randomly replace characters with its special character
-        finalPassList = random_capitalisation(alphabet_substitution(passwordList, noReplacements))
+        finalPassList = random_capitalisation(alphabet_substitution(passwordList, 4))
 
         # Append 2 different random numbers in front and at the end of the password
         finalPass = ''.join(secrets.choice(alphabet) for _ in range(4)) + ''.join(finalPassList) + ''.join(secrets.choice(alphabet) for _ in range(4))
@@ -67,18 +76,19 @@ def passphrase_generator(noWords=4, noReplacements=3):
         return finalPass
 
 # Default Option
-def password_generator(upperCase=2, noDigit=3):
+def password_generator(maxLength=16, minLength=8, capAlphabet=True, lowerAlphabet=True, specialChar=True):
     # Get all characters, special characters and digits
-    alphabet = string.ascii_letters + string.digits
-    loop = True
-
+    alphabet = get_char_set(capAlphabet, lowerAlphabet, specialChar)
+    
     # Create strong password
-    while loop:
+    while True:
         password = ''.join(secrets.choice(alphabet) for _ in range(12))
+        passwordList = list(password)
+        finalPass = random_capitalisation(alphabet_substitution(passwordList, 4))
 
         # Check if the password has the required user defined parameter
-        if (any(c.islower() for c in password)
-                and sum(c.isupper() for c in password) >= upperCase
-                and sum(c.isdigit() for c in password) >= noDigit):
+        if (any(c.islower() for c in finalPass)
+                and sum(c.isdigit() for c in finalPass) >= minLength
+                and sum(c.isdigit() for c in finalPass) <= maxLength):
             
             return password
