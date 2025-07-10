@@ -1396,6 +1396,15 @@ def generate_password():
             'error': 'Internal server error'
         }), 500
 
+@app.route('/api/password-health', methods=['GET', 'OPTIONS'])
+@require_auth
+def password_health():
+    """ Password health """
+
+    # Handle OPTIONS request for CORS
+    if request.method == 'OPTIONS':
+        return jsonify({'success': True}), 200
+
 if __name__ == '__main__':
     # Initialize database on startup
     # init_database()
