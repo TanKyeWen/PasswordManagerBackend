@@ -51,7 +51,7 @@ def get_char_set(capAlphabet=True, lowerAlphabet=True, specialChar=True):
     return charSet
 
 # noWords = Number of words to be included in the password
-def passphrase_generator(noWords=4, capAlphabet=True, lowerAlphabet=True, specialChar=True):
+def passphrase_generator(noWords=4, noWordsToSpecialChar=4, capAlphabet=True, lowerAlphabet=True, specialChar=True):
     # Define the Alphabets, Numbers and Special Character for random word generation using secrets
     alphabet = get_char_set(capAlphabet, lowerAlphabet, specialChar)
 
@@ -68,7 +68,7 @@ def passphrase_generator(noWords=4, capAlphabet=True, lowerAlphabet=True, specia
         passwordList = list(password.lower())
 
         # Add random capitalization and randomly replace characters with its special character
-        finalPassList = random_capitalisation(alphabet_substitution(passwordList, 4))
+        finalPassList = random_capitalisation(alphabet_substitution(passwordList, noWordsToSpecialChar))
 
         # Append 2 different random numbers in front and at the end of the password
         finalPass = ''.join(secrets.choice(alphabet) for _ in range(4)) + ''.join(finalPassList) + ''.join(secrets.choice(alphabet) for _ in range(4))
@@ -80,15 +80,15 @@ def password_generator(maxLength=16, minLength=8, capAlphabet=True, lowerAlphabe
     # Get all characters, special characters and digits
     alphabet = get_char_set(capAlphabet, lowerAlphabet, specialChar)
     
-    # Create strong password
+    if not alphabet:  # Safety check
+        return "Error: No character set selected"
+    
+    # Generate password with random length between min and max
+    password_length = secrets.randbelow(maxLength - minLength + 1) + minLength
+    
     while True:
-        password = ''.join(secrets.choice(alphabet) for _ in range(12))
-        passwordList = list(password)
-        finalPass = random_capitalisation(alphabet_substitution(passwordList, 4))
-
-        # Check if the password has the required user defined parameter
-        if (any(c.islower() for c in finalPass)
-                and sum(c.isdigit() for c in finalPass) >= minLength
-                and sum(c.isdigit() for c in finalPass) <= maxLength):
-            
-            return password
+        password = ''.join(secrets.choice(alphabet) for _ in range(password_length))
+        
+        # Basic validation (adjust as needed)
+        if len(password) >= minLength and len(password) <= maxLength:
+            return password 

@@ -1321,35 +1321,41 @@ def delete_credential(c_id):
 def generate_password():
     """Generate a random password"""
     try:
-        data = request.get_json()
-        
-        # Validate JSON data
-        if not data:
-            return jsonify({'success': False, 'error': 'Invalid JSON data'}), 400
-        
         # Get the authenticated user_id from the decorator
         user_id = request.current_user_id
         
-        # Get the password generation method
-        if not data.get('method'):
+        generation_method = request.args.get('method')
+        logger.info(f"User {user_id} requested password generation with method: {generation_method}")
+        if not generation_method:
+            logger.error(f"User {user_id} did not specify a password generation method")
             return jsonify({'success': False, 'error': 'Password generation method is required'}), 400
         
-        generation_method = data.get('method')
-            
         # Get the password generation parameters
-        if not data.get('cap') or not data.get('nonCap') or not data.get('specialChar'):
-            return jsonify({'success': False, 'error': 'Password generation parameters are required'}), 400
+        no_words = request.args.get('noWords', 4, type=int)
+        no_words_to_special_char = request.args.get('noWordsToSpecialChar', 4, type=int)
+        min_length = request.args.get('minLength', 8, type=int)
+        max_length = request.args.get('maxLength', 16, type=int)
+        cap = request.args.get('cap', 'true').lower() == 'true'
+        non_cap = request.args.get('nonCap', 'true').lower() == 'true'
+        special_char = request.args.get('specialChar', 'true').lower() == 'true'
         
-        cap_alphabet = bool(data.get('cap'))
-        lower_alphabet = bool(data.get('nonCap'))
-        special_char = bool(data.get('specialChar'))
+        # Validate that at least one character type is selected
+        if not cap and not non_cap and not special_char:
+            logger.error(f"User {user_id} did not select any character types for password generation")
+            return jsonify({'success': False, 'error': 'At least one character type must be selected'}), 400
+        
+        # Validate length parameters
+        if min_length < 1 or max_length < 1 or min_length > max_length:
+            logger.error(f"User {user_id} provided invalid length parameters: minLength={min_length}, maxLength={max_length}")
+            return jsonify({'success': False, 'error': 'Invalid length parameters'}), 400
 
         if (generation_method == 'passphrase'):
             # Generate a passphrase
             password = password_generation_module.passphrase_generator(
-                noWords=4, 
-                capAlphabet=cap_alphabet, 
-                lowerAlphabet=lower_alphabet, 
+                noWords=no_words, 
+                noWordsToSpecialChar = no_words_to_special_char,
+                capAlphabet=cap, 
+                lowerAlphabet=non_cap, 
                 specialChar=special_char
             )
 
@@ -1366,10 +1372,10 @@ def generate_password():
         elif (generation_method == 'default'):
             # Generate a default password
             password = password_generation_module.password_generator(
-                maxLength=16, 
-                minLength=8, 
-                capAlphabet=cap_alphabet, 
-                lowerAlphabet=lower_alphabet, 
+                maxLength=max_length, 
+                minLength=min_length, 
+                capAlphabet=cap, 
+                lowerAlphabet=non_cap, 
                 specialChar=special_char
             )
 
