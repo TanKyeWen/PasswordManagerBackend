@@ -7,6 +7,7 @@ import os
 from datetime import datetime, timedelta
 import encryption_module  # Encryption and decryption functions for credentials
 import password_generation_module  # Password generation functions
+import password_health_module # Password health funtions
 import logging
 import jwt
 import re # For email validation
@@ -1102,7 +1103,7 @@ def generate_password():
             'success': False,
             'error': 'Internal server error'
         }), 500
-
+    
 @app.route('/api/password-health', methods=['GET', 'OPTIONS'])
 @require_auth
 def password_health():
@@ -1111,6 +1112,56 @@ def password_health():
     # Handle OPTIONS request for CORS
     if request.method == 'OPTIONS':
         return jsonify({'success': True}), 200
+    
+    try:
+        # Get the authenticated user_id from the decorator
+        user_id = request.current_user_id
+        
+        # Get database connection
+        connection = get_db_connection()
+        if not connection:
+            logger.error("Database connection failed for vault access")
+            return jsonify({
+                'success': False,
+                'error': 'Service temporarily unavailable'
+            }), 503
+        
+        try:
+            duplicates = password_health_module.process_credentials_for_duplicates(
+                connection, user_id, encryption_module, max_workers=4
+            )
+         
+            if duplicates:
+                logger.info(f"Found {len(duplicates)} groups of duplicate passwords for user {user_id}")
+                return jsonify({
+                    'success': True,
+                    'user_id': user_id,
+                    'duplicate_groups': duplicates,
+                    'duplicates_found': len(duplicates)
+                }), 200
+            
+            else:
+                return jsonify({
+                    'success': True,
+                    'user_id': user_id,
+                    'duplicate_groups': {},
+                    'duplicates_found': 0
+                })
+            
+        except Exception as db_error:
+            logger.error(f"Database error in vault access for user {user_id}: {str(db_error)}")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to retrieve credentials'
+            }), 500
+                
+    except Exception as e:
+        logger.error(f"Unexpected error in vault endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error'
+        }), 500
+
 
 if __name__ == '__main__':
     # Initialize database on startup
