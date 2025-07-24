@@ -1,7 +1,5 @@
 from flask import json
 from hfc.fabric import Client
-from hfc.fabric_ca import ca_service
-from hfc.util import utils
 import asyncio
 
 def __init__(self):

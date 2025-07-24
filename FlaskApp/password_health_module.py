@@ -2,6 +2,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import logging
+import os
 import mysql.connector
 from mysql.connector import Error
 import mysql
@@ -97,7 +98,7 @@ def decrypt_credential_safe(encryption_module, encrypted_password):
     Safely decrypt a credential password with error handling
     """
     try:
-        return encryption_module.decrypt_password(encrypted_password)
+        return encryption_module.decrypt_password(encrypted_password, bytes.fromhex(os.getenv('AES_SECRET_KEY')))
     except Exception as e:
         logger.error(f"Decryption error: {e}")
         return None

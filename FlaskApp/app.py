@@ -132,67 +132,64 @@ def require_auth(f, check_resource_owner=True):
         # Skip authentication for OPTIONS requests (CORS preflight)
         if request.method == 'OPTIONS':
             return f(*args, **kwargs)
-            
+           
         try:
-            # Your existing auth logic here...
             user_id = session.get('user_id')
-            
-            if user_id is None:
+           
+            if not user_id:
                 logger.warning(f"Unauthorized access attempt to {request.endpoint} from IP: {get_client_ip(request)}")
                 return jsonify({
                     'success': False,
                     'error': 'Authentication required'
                 }), 401
-            
-            # Validate user_id (more robust validation)
-            if not user_id or (isinstance(user_id, str) and user_id.strip() == ''):
-                logger.error(f"Invalid user_id in session: {user_id}")
+           
+            # Convert to string and validate format (assuming string IDs)
+            user_id = str(user_id).strip()
+            if not user_id:
+                logger.error("Invalid user_id format in session")
                 return jsonify({
                     'success': False,
                     'error': 'Invalid session data'
                 }), 400
-            
+           
             # Resource ownership validation
             if check_resource_owner:
                 request_user_id = None
-                
-                # Check URL parameters (e.g., /api/activity/user/<user_id>)
+               
+                # Check URL parameters
                 if 'user_id' in kwargs:
-                    request_user_id = kwargs['user_id']
-                
+                    request_user_id = str(kwargs['user_id']).strip()
+               
                 # Check JSON body
-                elif request.is_json and request.json:
-                    request_user_id = request.json.get('user_id')
-                
+                elif request.is_json and request.json and 'user_id' in request.json:
+                    request_user_id = str(request.json['user_id']).strip()
+               
                 # Check query parameters
                 elif request.args.get('user_id'):
-                    request_user_id = request.args.get('user_id')
-                
-                # If we found a user_id in the request, validate ownership
-                if request_user_id:
-                    if request_user_id != user_id:
-                        logger.warning(
-                            f"Access denied: User {user_id} attempted to access "
-                            f"resources for user {request_user_id} from IP: {get_client_ip(request)}"
-                        )
-                        return jsonify({
-                            'success': False,
-                            'error': 'Access denied: You can only access your own resources'
-                        }), 403
-                    
-                    logger.info(f"Resource access validated for user {user_id}")
-
-            # Add user_id to request context for easy access
+                    request_user_id = str(request.args.get('user_id')).strip()
+               
+                # Validate ownership with consistent string comparison
+                if request_user_id and request_user_id != user_id:
+                    logger.warning(
+                        f"Access denied: User {user_id} attempted to access "
+                        f"resources for user {request_user_id} from IP: {get_client_ip(request)}"
+                    )
+                    return jsonify({
+                        'success': False,
+                        'error': 'Access denied'
+                    }), 403
+           
+            # Add user_id to request context
             request.current_user_id = user_id
             return f(*args, **kwargs)
-            
+           
         except Exception as e:
             logger.error(f"Authentication error in {request.endpoint}: {str(e)}")
             return jsonify({
                 'success': False,
                 'error': 'Authentication error'
             }), 500
-    
+   
     return decorated_function
 
 # def validate_jwt_token(token):
@@ -205,7 +202,7 @@ def require_auth(f, check_resource_owner=True):
 #         return None
 
 @app.route('/api/user/session', methods=['GET', 'OPTIONS'])
-@require_auth()
+@require_auth
 def get_session():
     """Get current session information"""
     
@@ -479,7 +476,7 @@ def api_signout():
         return response, 500
 
 @app.route('/api/vault', methods=['GET', 'OPTIONS'])
-@require_auth()
+@require_auth
 def get_vault_credentials():
     """Get all credentials for the authenticated user"""
     
@@ -558,7 +555,7 @@ def get_vault_credentials():
         }), 500
 
 @app.route('/api/credential/decrypt/<int:c_id>', methods=['GET'])
-@require_auth()
+@require_auth
 def decrypt_password(c_id):
     """Decrypt a password for the authenticated user"""
     try:
@@ -626,7 +623,7 @@ def decrypt_password(c_id):
         }), 500
 
 @app.route('/api/credential', methods=['POST'])
-@require_auth()
+@require_auth
 def add_credential():
     """Add a new credential for the authenticated user"""
     try:
@@ -676,7 +673,7 @@ def add_credential():
                 }), 409
             
             # Validate the requested user
-            if user_id != data.get('user_id'):
+            if str(user_id).strip() != str(data.get('user_id')).strip():
                 logger.warning(f"Unauthorized access attempt to add credential by user {user_id}")
                 return jsonify({
                     'success': False,
@@ -694,7 +691,7 @@ def add_credential():
             ip_address = get_client_ip(request)
 
             cursor.execute(insert_query, (
-                user_id,
+                int(user_id),
                 data.get('credential_website', ''),
                 data.get('credential_username', ''),
                 encrypted_password,
@@ -719,7 +716,8 @@ def add_credential():
             }), 201
             
         except Exception as db_error:
-            logger.error(f"Database error in vault access for user {user_id}: {str(db_error)}")
+            logger.error(f"Database error in vault access for user {user_id}: {db_error}")
+            logger.exception(f"Database error in vault access for user {user_id}: {db_error}")
             return jsonify({
                 'success': False,
                 'error': 'Failed to add credential'
@@ -739,7 +737,7 @@ def add_credential():
         }), 500
 
 @app.route('/api/credential/<int:c_id>', methods=['PUT'])
-@require_auth()
+@require_auth
 def update_credential(c_id):
     """Update a credential for the authenticated user"""
     try:
@@ -789,7 +787,7 @@ def update_credential(c_id):
                 }), 409
             
             # Validate the requested user
-            if user_id != data.get('user_id'):
+            if str(user_id).strip() != str(data.get('user_id')).strip():
                 logger.warning(f"Unauthorized access attempt to update credential by user {user_id}")
                 return jsonify({
                     'success': False,
@@ -850,7 +848,7 @@ def update_credential(c_id):
         }), 500
 
 @app.route('/api/credential/<int:c_id>', methods=['DELETE'])
-@require_auth()
+@require_auth
 def delete_credential(c_id):
     """Delete a credential for the authenticated user"""
     try:
@@ -897,7 +895,7 @@ def delete_credential(c_id):
             cursor.execute(validate_query, (c_id))
             credential = cursor.fetchone()
 
-            if user_id != credential['user_id']:
+            if str(user_id).strip() != str(credential['user_id']).strip():
                 logger.warning(f"Unauthorized access attempt to delete credential {c_id} by user {user_id}")
                 return jsonify({
                     'success': False,
@@ -940,131 +938,9 @@ def delete_credential(c_id):
             'success': False,
             'error': 'Internal server error'
         }), 500
-    """Add credentials for the authenticated user"""
-    try:
-        data = request.get_json()
-        
-        # Validate JSON data
-        if not data:
-            response = jsonify({'error': 'Invalid JSON data'})
-            return response, 400
-
-        # Check authentication
-        user_id = session.get('user_id')
-        if not user_id:
-            logger.warning(f"Unauthorized vault access attempt from IP: {get_client_ip(request)}")
-            response = jsonify({
-                'success': False,
-                'error': 'Authentication required'
-            })
-            return response, 401
-        
-        # Validate user_id
-        if not isinstance(user_id, (int, str)) or str(user_id).strip() == '':
-            logger.error(f"Invalid user_id in session: {user_id}")
-            response = jsonify({
-                'success': False,
-                'error': 'Invalid session data'
-            })
-            return response, 400
-        
-        connection = get_db_connection()
-        if not connection:
-            logger.error("Database connection failed for vault access")
-            response = jsonify({
-                'success': False,
-                'error': 'Service temporarily unavailable'
-            })
-            return response, 503
-        
-        try:
-            cursor = connection.cursor(dictionary=True)
-            
-            # Validate owner of the credential
-            validate_query = """
-                SELECT user_id
-                FROM credentials 
-                WHERE id = %s
-            """
-            cursor.execute(validate_query, (c_id,))
-            owner = cursor.fetchone()
-            
-            if not owner or owner['user_id'] != user_id:
-                logger.warning(f"Unauthorized access attempt to credential {c_id} by user {user_id}")
-                response = jsonify({
-                    'success': False,
-                    'error': 'Unauthorized access to credential'
-                })
-                return response, 403
-            
-            # Validate input data
-            if not data.get('credential_website') or not data.get('credential_username') or not data.get('credential_password'):
-                response = jsonify({'error': 'Website, username, and password are required'})
-                return response, 400
-            
-            # Update credential
-            add_query = """
-                INSERT INTO credentials (user_id, credential_website, credential_username, credential_password, created_at, created_ip_address)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """
-            
-            cursor.execute(add_query, (
-                user_id, 
-                data.get('credential_website', ''),
-                data.get('credential_username', ''),
-                data.get('credential_password', ''), 
-                datetime.now(), 
-                c_id, 
-                user_id))
-            connection.commit()
-            
-            # Check if any rows were affected
-            if cursor.rowcount == 0:
-                return jsonify({'error': 'Credential not found or no changes made'}), 404
-
-            # Log successful update
-            logger.info(f"User {user_id} updated credential - {c_id}")
-            
-            # Optional: Remove sensitive data for certain use cases
-            # Or add encryption/decryption here if needed
-            
-            response = jsonify({
-                'success': True,
-                'message': f'Updated credential: {c_id}',
-                'data': {
-                    'updated_credential': c_id,
-                    'user_id': user_id
-                }
-            })
-            
-            return response, 200
-            
-        except Error as e:
-            logger.error(f"Database error while fetching credentials for user {user_id}: {e}")
-            response = jsonify({
-                'success': False,
-                'error': 'Failed to retrieve credentials'
-            })
-            
-            return response, 500
-            
-        finally:
-            if cursor:
-                cursor.close()
-            if connection:
-                connection.close()
-    
-    except Exception as e:
-        logger.error(f"Unexpected error in credential access: {e}")
-        response = jsonify({
-            'success': False,
-            'error': 'An unexpected error occurred'
-        })
-        
-        return response, 500
 
 @app.route('/api/generate-password', methods=['GET'])
-@require_auth()
+@require_auth
 def generate_password():
     """Generate a random password"""
     try:
@@ -1144,7 +1020,7 @@ def generate_password():
         }), 500
     
 @app.route('/api/password-health', methods=['GET', 'OPTIONS'])
-@require_auth()
+@require_auth
 def password_health():
     """ Password health """
 
@@ -1175,7 +1051,7 @@ def password_health():
                 return jsonify({
                     'success': True,
                     'user_id': user_id,
-                    'duplicate_groups': duplicates,
+                    'duplicate': duplicates,
                     'duplicates_found': len(duplicates)
                 }), 200
             
@@ -1202,29 +1078,26 @@ def password_health():
         }), 500
 
 @app.route('/api/audit-trail', methods=['POST'])
-@require_auth()
+@require_auth
 def create_activity_log():
     try:
         user_id = request.current_user_id
-        log_id = data.get('id')
+        cred_id = data.get('cred_id')
         
         data = request.get_json()
         
         # Validate required fields
-        required_fields = ['activity_name', 'date']
+        required_fields = ['activity_name']
         for field in required_fields:
             if field not in data:
                 return jsonify({"error": f"Missing required field: {field}"}), 400
         
-        # Get IP address
-        ip_address = data.get('ip', get_client_ip())
-        
         # Prepare arguments for chaincode
         args = [
             user_id,
-            log_id,
+            cred_id,
             data['activity_name'],
-            data['date'],
+            datetime.now(),
             get_client_ip
         ]
         
@@ -1245,16 +1118,16 @@ def create_activity_log():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/activity/<user_id>', methods=['GET'])
-@require_auth()
+@require_auth
 def get_activity_logs_by_user(user_id):
     """Get all activity logs for a specific user"""
     try:
         result = fabric_client.query_chaincode('GetActivityLogsByUser', [user_id])
         
         if 'error' in result:
-            return jsonify(result), 500
+            return jsonify({"result": result}), 500
         
-        return jsonify(result)
+        return jsonify({"result": result})
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500

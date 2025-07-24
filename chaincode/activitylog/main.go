@@ -15,8 +15,9 @@ type SmartContract struct {
 
 // ActivityLog represents an activity log entry
 type ActivityLog struct {
+	LogID		 string `json:"log_id`
 	UserID       string `json:"user_id"`
-	ID           string `json:"id"`
+	CredID       string `json:"cred_id,omitempty"`
 	ActivityName string `json:"activity_name"`
 	Date         string `json:"date"`
 	IP           string `json:"ip"`
@@ -24,7 +25,7 @@ type ActivityLog struct {
 }
 
 // CreateActivityLog creates a new activity log entry
-func (s *SmartContract) CreateActivityLog(ctx contractapi.TransactionContextInterface, userID string, id string, activityName string, date string, ip string) error {
+func (s *SmartContract) CreateActivityLog(ctx contractapi.TransactionContextInterface, userID string, id, activityName string, date string, ip string) error {
 	// Check if the activity log already exists
 	exists, err := s.ActivityLogExists(ctx, id)
 	if err != nil {
@@ -38,8 +39,9 @@ func (s *SmartContract) CreateActivityLog(ctx contractapi.TransactionContextInte
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
 	activityLog := ActivityLog{
+		LogID:			uuid.New().String(),
 		UserID:       userID,
-		ID:           id,
+		CredID:           id,
 		ActivityName: activityName,
 		Date:         date,
 		IP:           ip,
@@ -113,29 +115,6 @@ func (s *SmartContract) getQueryResultForQueryString(ctx contractapi.Transaction
 	}
 
 	return activityLogs, nil
-}
-
-// InitLedger adds base set of activity logs to the ledger
-func (s *SmartContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
-	activityLogs := []ActivityLog{
-		{UserID: "user001", ID: "log001", ActivityName: "login", Date: "2025-07-23", IP: "192.168.1.100", Timestamp: time.Now().UTC().Format(time.RFC3339)},
-		{UserID: "user001", ID: "log002", ActivityName: "password_change", Date: "2025-07-23", IP: "192.168.1.100", Timestamp: time.Now().UTC().Format(time.RFC3339)},
-		{UserID: "user002", ID: "log003", ActivityName: "login", Date: "2025-07-23", IP: "192.168.1.101", Timestamp: time.Now().UTC().Format(time.RFC3339)},
-	}
-
-	for _, activityLog := range activityLogs {
-		activityLogJSON, err := json.Marshal(activityLog)
-		if err != nil {
-			return err
-		}
-
-		err = ctx.GetStub().PutState(activityLog.ID, activityLogJSON)
-		if err != nil {
-			return fmt.Errorf("failed to put to world state. %v", err)
-		}
-	}
-
-	return nil
 }
 
 func main() {
