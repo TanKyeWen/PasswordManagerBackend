@@ -8,15 +8,11 @@ from datetime import datetime, timedelta
 import encryption_module  # Encryption and decryption functions for credentials
 import password_generation_module  # Password generation functions
 import password_health_module # Password health funtions
+import blockchain_communication_module as fabric_client
 import logging
 import jwt
 import re # For email validation
 from dotenv import load_dotenv
-
-# 
-from hfc.fabric import Client
-from hfc.fabric_network import Network
-from hfc.util.crypto.crypto import generate_private_key, serialize_private_key
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -121,7 +117,15 @@ def init_database():
             cursor.close()
             connection.close()
 
-def require_auth(f):
+def get_client_ip(request):
+    forwarded_for = request.headers.get('X-Forwarded-For')
+    if forwarded_for:
+        ip = forwarded_for.split(',')[0].strip()
+    else:
+        ip = request.remote_addr
+    return ip
+
+def require_auth(f, check_resource_owner=True):
     """Decorator to require authentication for routes"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -134,7 +138,7 @@ def require_auth(f):
             user_id = session.get('user_id')
             
             if user_id is None:
-                logger.warning(f"Unauthorized access attempt to {request.endpoint} from IP: {request.remote_addr}")
+                logger.warning(f"Unauthorized access attempt to {request.endpoint} from IP: {get_client_ip(request)}")
                 return jsonify({
                     'success': False,
                     'error': 'Authentication required'
@@ -148,6 +152,36 @@ def require_auth(f):
                     'error': 'Invalid session data'
                 }), 400
             
+            # Resource ownership validation
+            if check_resource_owner:
+                request_user_id = None
+                
+                # Check URL parameters (e.g., /api/activity/user/<user_id>)
+                if 'user_id' in kwargs:
+                    request_user_id = kwargs['user_id']
+                
+                # Check JSON body
+                elif request.is_json and request.json:
+                    request_user_id = request.json.get('user_id')
+                
+                # Check query parameters
+                elif request.args.get('user_id'):
+                    request_user_id = request.args.get('user_id')
+                
+                # If we found a user_id in the request, validate ownership
+                if request_user_id:
+                    if request_user_id != user_id:
+                        logger.warning(
+                            f"Access denied: User {user_id} attempted to access "
+                            f"resources for user {request_user_id} from IP: {get_client_ip(request)}"
+                        )
+                        return jsonify({
+                            'success': False,
+                            'error': 'Access denied: You can only access your own resources'
+                        }), 403
+                    
+                    logger.info(f"Resource access validated for user {user_id}")
+
             # Add user_id to request context for easy access
             request.current_user_id = user_id
             return f(*args, **kwargs)
@@ -171,7 +205,7 @@ def require_auth(f):
 #         return None
 
 @app.route('/api/user/session', methods=['GET', 'OPTIONS'])
-@require_auth
+@require_auth()
 def get_session():
     """Get current session information"""
     
@@ -445,7 +479,7 @@ def api_signout():
         return response, 500
 
 @app.route('/api/vault', methods=['GET', 'OPTIONS'])
-@require_auth
+@require_auth()
 def get_vault_credentials():
     """Get all credentials for the authenticated user"""
     
@@ -524,7 +558,7 @@ def get_vault_credentials():
         }), 500
 
 @app.route('/api/credential/decrypt/<int:c_id>', methods=['GET'])
-@require_auth
+@require_auth()
 def decrypt_password(c_id):
     """Decrypt a password for the authenticated user"""
     try:
@@ -592,7 +626,7 @@ def decrypt_password(c_id):
         }), 500
 
 @app.route('/api/credential', methods=['POST'])
-@require_auth
+@require_auth()
 def add_credential():
     """Add a new credential for the authenticated user"""
     try:
@@ -657,7 +691,7 @@ def add_credential():
 
             datetime_now = datetime.now()
             encrypted_password = encryption_module.encrypt_password(data.get('credential_password', ''), AES_secret_key)
-            ip_address = request.remote_addr
+            ip_address = get_client_ip(request)
 
             cursor.execute(insert_query, (
                 user_id,
@@ -705,7 +739,7 @@ def add_credential():
         }), 500
 
 @app.route('/api/credential/<int:c_id>', methods=['PUT'])
-@require_auth
+@require_auth()
 def update_credential(c_id):
     """Update a credential for the authenticated user"""
     try:
@@ -816,7 +850,7 @@ def update_credential(c_id):
         }), 500
 
 @app.route('/api/credential/<int:c_id>', methods=['DELETE'])
-@require_auth
+@require_auth()
 def delete_credential(c_id):
     """Delete a credential for the authenticated user"""
     try:
@@ -918,7 +952,7 @@ def delete_credential(c_id):
         # Check authentication
         user_id = session.get('user_id')
         if not user_id:
-            logger.warning(f"Unauthorized vault access attempt from IP: {request.remote_addr}")
+            logger.warning(f"Unauthorized vault access attempt from IP: {get_client_ip(request)}")
             response = jsonify({
                 'success': False,
                 'error': 'Authentication required'
@@ -1030,7 +1064,7 @@ def delete_credential(c_id):
         return response, 500
 
 @app.route('/api/generate-password', methods=['GET'])
-@require_auth
+@require_auth()
 def generate_password():
     """Generate a random password"""
     try:
@@ -1110,7 +1144,7 @@ def generate_password():
         }), 500
     
 @app.route('/api/password-health', methods=['GET', 'OPTIONS'])
-@require_auth
+@require_auth()
 def password_health():
     """ Password health """
 
@@ -1167,6 +1201,63 @@ def password_health():
             'error': 'Internal server error'
         }), 500
 
+@app.route('/api/audit-trail', methods=['POST'])
+@require_auth()
+def create_activity_log():
+    try:
+        user_id = request.current_user_id
+        log_id = data.get('id')
+        
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['activity_name', 'date']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        # Get IP address
+        ip_address = data.get('ip', get_client_ip())
+        
+        # Prepare arguments for chaincode
+        args = [
+            user_id,
+            log_id,
+            data['activity_name'],
+            data['date'],
+            get_client_ip
+        ]
+        
+        # Invoke chaincode
+        result = fabric_client.invoke_chaincode('CreateActivityLog', args)
+        
+        if 'error' in result:
+            return jsonify(result), 500
+        
+        return jsonify({
+            "success": True,
+            "id": log_id,
+            "tx_id": result.get('tx_id'),
+            "message": "Activity log created successfully"
+        }), 201
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/activity/<user_id>', methods=['GET'])
+@require_auth()
+def get_activity_logs_by_user(user_id):
+    """Get all activity logs for a specific user"""
+    try:
+        result = fabric_client.query_chaincode('GetActivityLogsByUser', [user_id])
+        
+        if 'error' in result:
+            return jsonify(result), 500
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # Initialize database on startup

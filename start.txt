@@ -1,1 +1,9 @@
+BASH
+
 docker-compose up -d
+
+cd fabric-env
+Scripts/activate
+
+cd ../FlaskApp
+python app.py
