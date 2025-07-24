@@ -1,0 +1,18 @@
+services:
+  peer0.org1.example.com:
+    image: hyperledger/fabric-peer:latest
+    environment:
+      - CORE_PEER_ID=peer0.org1.example.com
+      - CORE_PEER_ADDRESS=peer0.org1.example.com:7051
+      # Add other peer configuration
+    ports:
+      - "7051:7051"
+    # Add volumes and other configurations
+
+  orderer.example.com:
+    image: hyperledger/fabric-orderer:latest
+    environment:
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+      # Add orderer configuration
+    ports:
+      - "7050:7050"
