@@ -1,12 +1,6 @@
 BASH
 
-cd ..\..\fabric-samples\test-network
-./network.sh deployCC -ccn activityLog -ccp D:\USER\FYP\PasswordManagerBackend\fabric-network\chaincode\activitylog -ccl go
-
-docker-compose up -d
-
-cd fabric-env
-Scripts/activate
+besu --data-path=besu-network/data --genesis-file=besu-network/config/genesis.json --network-id=1337 --rpc-http-enabled --rpc-http-cors-origins="*" --host-allowlist="*" --rpc-http-port=8545
 
 cd ../FlaskApp
 python app.py
