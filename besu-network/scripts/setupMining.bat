@@ -10,13 +10,13 @@ timeout /t 2 /nobreak >nul
 echo Starting Besu with mining enabled...
 
 REM The miner address should be the authority address from your genesis.json
-set MINER_ADDRESS=0x578845f5b8ff7d173df6092d71705e29823a3f40
+set MINER_ADDRESS=0xB7d84135999C320Ee6279C6c1396647AABFe7Cae
 
 echo Miner Address: %MINER_ADDRESS%
 
 REM Start Besu with mining enabled
-besu --data-path=besu-network/data ^
-     --genesis-file=besu-network/config/genesis.json ^
+besu --data-path=./data ^
+     --genesis-file=./config/genesis.json ^
      --network-id=1337 ^
      --rpc-http-enabled ^
      --rpc-http-cors-origins="*" ^

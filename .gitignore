@@ -1,0 +1,6 @@
+# Besu-Network confidential files
+besu-network/data/
+besu-network/accounts/
+
+# Env file
+FlaskApp/.env

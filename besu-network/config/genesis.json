@@ -7,7 +7,11 @@
       "epochlength": 30000
     }
   },
-  "alloc": {},
+  "alloc": {
+    "0xB7d84135999C320Ee6279C6c1396647AABFe7Cae": {
+      "balance": "0x3635C9ADC5DEA00000"
+    }
+  },
   "coinbase": "0x0000000000000000000000000000000000000000",
   "difficulty": "1",
   "gasLimit": "0x47b760",

@@ -1,5 +1,5 @@
 from web3 import Web3
-from solcx import compile_source, install_solc
+from solcx import compile_source, install_solc, set_solc_version
 import json
 import os
 import time
@@ -7,6 +7,7 @@ import time
 # Install Solidity compiler
 try:
     install_solc('0.8.19')
+    set_solc_version('0.8.19')
 except:
     print("Solidity compiler already installed or installation failed")
 
@@ -226,22 +227,22 @@ def deploy_contract(contract_interface, account_address, private_key):
     )
     
     # Build constructor transaction
-    constructor_txn = contract.constructor().buildTransaction({
+    constructor_txn = contract.constructor().build_transaction({
         'chainId': CHAIN_ID,
         'gas': 3000000,
-        'gasPrice': w3.toWei('20', 'gwei'),
-        'nonce': w3.eth.getTransactionCount(account_address),
+        'gasPrice': w3.to_wei('20', 'gwei'),
+        'nonce': w3.eth.get_transaction_count(account_address),
     })
     
     # Sign and send transaction
-    signed_txn = w3.eth.account.signTransaction(constructor_txn, private_key)
-    tx_hash = w3.eth.sendRawTransaction(signed_txn.rawTransaction)
+    signed_txn = w3.eth.account.sign_transaction(constructor_txn, private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
     
     print(f"Deployment transaction sent: {tx_hash.hex()}")
     print("Waiting for transaction receipt...")
     
     # Wait for transaction receipt
-    tx_receipt = w3.eth.waitForTransactionReceipt(tx_hash, timeout=300)
+    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=300)
     
     contract_address = tx_receipt.contractAddress
     print(f"Contract deployed successfully!")
@@ -267,11 +268,11 @@ def deploy_contract(contract_interface, account_address, private_key):
 
 def main():
     # Check connection
-    if not w3.isConnected():
+    if not w3.is_connected():
         print("Error: Cannot connect to Besu network. Make sure Besu is running.")
         return
     
-    print(f"Connected to Besu network (Chain ID: {w3.eth.chainId})")
+    print(f"Connected to Besu network (Chain ID: {w3.eth.chain_id})")
     
     # Load account
     account_address, private_key = load_account()
@@ -282,8 +283,8 @@ def main():
     print(f"Using account: {account_address}")
     
     # Check account balance
-    balance = w3.eth.getBalance(account_address)
-    print(f"Account balance: {w3.fromWei(balance, 'ether')} ETH")
+    balance = w3.eth.get_balance(account_address)
+    print(f"Account balance: {w3.from_wei(balance, 'ether')} ETH")
     
     if balance == 0:
         print("⚠️  Warning: Account has no ETH. You may need to fund it or set up mining.")
