@@ -1,5 +1,8 @@
 BASH
 
+cd ..\..\fabric-samples\test-network
+./network.sh deployCC -ccn activityLog -ccp D:\USER\FYP\PasswordManagerBackend\fabric-network\chaincode\activitylog -ccl go
+
 docker-compose up -d
 
 cd fabric-env
