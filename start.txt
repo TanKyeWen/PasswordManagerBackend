@@ -1,5 +1,6 @@
 BASH
-besu --data-path=/data --genesis-file=/config/genesis.json --network-id=1337 --rpc-http-enabled --rpc-http-cors-origins="*" --host-allowlist="*" --rpc-http-port=8545
+cd /d/user/fyp/passwordmanagerbackend/besu-network
+besu --data-path="./data" --genesis-file="./config/genesis.json" --network-id=1337 --rpc-http-enabled --rpc-http-cors-origins="*" --host-allowlist="*" --rpc-http-port=8545
 scripts/setupMining.bat
 
 
