@@ -3,4 +3,4 @@ besu-network/data/
 besu-network/accounts/
 
 # Env file
-.env
+flask-app/.env
