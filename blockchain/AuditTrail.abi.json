@@ -1,0 +1,315 @@
+[
+  {
+    "inputs": [],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableInvalidOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableUnauthorizedAccount",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "string",
+        "name": "logID",
+        "type": "string"
+      },
+      {
+        "indexed": true,
+        "internalType": "string",
+        "name": "userID",
+        "type": "string"
+      },
+      {
+        "indexed": true,
+        "internalType": "string",
+        "name": "activityName",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "date",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "timestamp",
+        "type": "string"
+      }
+    ],
+    "name": "AuditEntryCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "_logID",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_userID",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_credID",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_activityName",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_date",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_ip",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_timestamp",
+        "type": "string"
+      }
+    ],
+    "name": "addAuditEntry",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "allLogIDs",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "name": "auditEntries",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "logID",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "userID",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "credID",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "activityName",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "date",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "ip",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "timestamp",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "_userID",
+        "type": "string"
+      }
+    ],
+    "name": "getUserAuditEntries",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "string",
+            "name": "logID",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "userID",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "credID",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "activityName",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "date",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "ip",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "timestamp",
+            "type": "string"
+          }
+        ],
+        "internalType": "struct AuditTrail.AuditEntry[]",
+        "name": "",
+        "type": "tuple[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "userAuditEntries",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

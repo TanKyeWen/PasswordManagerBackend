@@ -1,5 +1,3 @@
-import ipaddress
-import traceback
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_cors import CORS
 from functools import wraps
@@ -10,10 +8,8 @@ from datetime import datetime, timedelta
 import encryption_module as enc # Encryption and decryption functions for credentials
 import password_generation_module as pg # Password generation functions
 import password_health_module as ph # Password health funtions
-import blockchain_communication_module as bcc
+from blockchain_communication_module import BlockchainService
 import logging
-from web3 import Web3
-import jwt
 import re # For email validation
 from dotenv import load_dotenv
 
@@ -26,12 +22,7 @@ logger = logging.getLogger(__name__)
 website_url = os.getenv('WEBSITE_URL')
 
 # BlockChain Setup
-BESU_URL = os.getenv('BESU_URL')
-CHAIN_ID = int(os.getenv('CHAIN_ID'))
-w3 = Web3(Web3.HTTPProvider(BESU_URL))
-account_address = None
-private_key = None
-contract = None
+bcc = BlockchainService()
 
 # CORS and Flask Setup
 app = Flask(__name__)
@@ -1248,8 +1239,6 @@ def password_health():
             'error': 'Internal server error'
         }), 500
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
     """Health check endpoint"""
     try:
         # Get fresh values from bcc functions (don't rely on cached globals for health check)
@@ -1286,19 +1275,33 @@ def health_check():
 def create_activity_log():
     """Create a new activity log for the authenticated user"""
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
+        client_ip = get_client_ip(request)
 
-        required_fields = ['cred_id', 'activity_name']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
+        logger.info(
+            "POST /api/audit-trail by actor_user_id=%s activity_name=%s cred_id_present=%s ip=%s",
+            getattr(request, "current_user_id", "n/a"),
+            data.get('activity_name'),
+            bool(data.get('cred_id')),
+            client_ip
+        )
         
         # Add to blockchain
-        result = bcc.blockchain_service.add_audit_entry(
+        result = bcc.add_audit_entry(
             user_id=request.current_user_id,
             cred_id=data.get('cred_id', ''),
             activity_name=data.get('activity_name'),
-            ip_address=get_client_ip(request),
+            ip_address=client_ip,
+        )
+
+        # Try to pull a tx hash-like field if it exists
+        tx_hash = None
+        if isinstance(result, dict):
+            tx_hash = result.get('tx_hash') or result.get('transactionHash')
+        logger.info(
+            "Audit entry created for actor_user_id=%s tx=%s",
+            getattr(request, "current_user_id", "n/a"),
+            tx_hash if tx_hash else str(result)[:200]  # avoid huge logs
         )
         
         return jsonify({
@@ -1356,6 +1359,11 @@ def create_activity_log():
 def get_activity_log_by_user(user_id):
     """Get all activity logs for specific user from blockchain"""
     try:
+        logger.info(
+            "GET /api/activity/%s requested by actor_user_id=%s",
+            user_id, getattr(request, "current_user_id", "n/a")
+        )
+
         # Ensure contract is loaded
         if not contract:
             logger.error("Contract not initialized")
@@ -1365,8 +1373,10 @@ def get_activity_log_by_user(user_id):
                 'code': 'CONTRACT_ERROR'
             }), 500
         
+        logger.info("Fetching audit entries for user_id=%s from blockchain", user_id)
+
         # Get user's log details
-        log_details = bcc.blockchain_service.get_user_audit_entries(user_id)
+        log_details = bcc.get_user_audit_entries(user_id)
         
         # Structure the response
         logs = []
@@ -1379,6 +1389,11 @@ def get_activity_log_by_user(user_id):
                 'ip': log_details[4][i],
                 'timestamp': log_details[5][i]
             })
+
+        logger.info(
+            "Found %d audit logs for user_id=%s",
+            len(logs), user_id
+        )
         
         return jsonify({
             'success': True,
