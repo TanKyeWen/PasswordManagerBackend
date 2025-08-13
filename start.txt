@@ -1,7 +1,9 @@
 BASH
-cd /d/user/fyp/passwordmanagerbackend/besu-network
-besu --data-path="./data" --genesis-file="./config/genesis.json" --network-id=1337 --rpc-http-enabled --rpc-http-cors-origins="*" --host-allowlist="*" --rpc-http-port=8545
-scripts/setupMining.bat
+>
+
+** If error from daemon: mkdir C:\Program FIles\Git\var: Access Denied
+BASH
+> export MSYS_NO_PATHCONV=1
 
 
 PS

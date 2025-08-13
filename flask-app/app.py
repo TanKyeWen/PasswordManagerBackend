@@ -1,4 +1,5 @@
 import ipaddress
+import traceback
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from flask_cors import CORS
 from functools import wraps
@@ -205,146 +206,146 @@ def require_auth(f, check_resource_owner=True):
    
     return decorated_function
 
-def validate_request_data(required_fields=None, validation_rules=None):
-    """
-    Universal validation decorator for Flask API calls
+# def validate_request_data(required_fields=None, validation_rules=None):
+#     """
+#     Universal validation decorator for Flask API calls
     
-    Args:
-        required_fields (list): List of required field names
-        validation_rules (dict): Dictionary of field_name: validation_function pairs
-    """
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            # Check if request contains JSON data
-            if not request.is_json:
-                return jsonify({
-                    'success': False,
-                    'error': 'Request must contain JSON data',
-                    'code': 'INVALID_REQUEST_FORMAT'
-                }), 400
+#     Args:
+#         required_fields (list): List of required field names
+#         validation_rules (dict): Dictionary of field_name: validation_function pairs
+#     """
+#     def decorator(f):
+#         @wraps(f)
+#         def decorated_function(*args, **kwargs):
+#             # Check if request contains JSON data
+#             if not request.is_json:
+#                 return jsonify({
+#                     'success': False,
+#                     'error': 'Request must contain JSON data',
+#                     'code': 'INVALID_REQUEST_FORMAT'
+#                 }), 400
             
-            try:
-                data = request.get_json()
-            except Exception as e:
-                return jsonify({
-                    'success': False,
-                    'error': 'Invalid JSON format',
-                    'code': 'INVALID_JSON',
-                    'details': str(e)
-                }), 400
+#             try:
+#                 data = request.get_json()
+#             except Exception as e:
+#                 return jsonify({
+#                     'success': False,
+#                     'error': 'Invalid JSON format',
+#                     'code': 'INVALID_JSON',
+#                     'details': str(e)
+#                 }), 400
             
-            if not data:
-                return jsonify({
-                    'success': False,
-                    'error': 'Empty request body',
-                    'code': 'EMPTY_REQUEST'
-                }), 400
+#             if not data:
+#                 return jsonify({
+#                     'success': False,
+#                     'error': 'Empty request body',
+#                     'code': 'EMPTY_REQUEST'
+#                 }), 400
             
-            # Check required fields
-            if required_fields:
-                missing_fields = [field for field in required_fields if field not in data or not data[field]]
-                if missing_fields:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Missing required fields: {", ".join(missing_fields)}',
-                        'code': 'MISSING_FIELDS',
-                        'missing_fields': missing_fields
-                    }), 400
+#             # Check required fields
+#             if required_fields:
+#                 missing_fields = [field for field in required_fields if field not in data or not data[field]]
+#                 if missing_fields:
+#                     return jsonify({
+#                         'success': False,
+#                         'error': f'Missing required fields: {", ".join(missing_fields)}',
+#                         'code': 'MISSING_FIELDS',
+#                         'missing_fields': missing_fields
+#                     }), 400
             
-            # Apply validation rules
-            if validation_rules:
-                for field_name, validation_func in validation_rules.items():
-                    if field_name in data:
-                        try:
-                            is_valid, error_message = validation_func(data[field_name])
-                            if not is_valid:
-                                return jsonify({
-                                    'success': False,
-                                    'error': f'Validation failed for field "{field_name}": {error_message}',
-                                    'code': 'VALIDATION_ERROR',
-                                    'field': field_name
-                                }), 400
-                        except Exception as e:
-                            return jsonify({
-                                'success': False,
-                                'error': f'Validation error for field "{field_name}": {str(e)}',
-                                'code': 'VALIDATION_EXCEPTION',
-                                'field': field_name
-                            }), 500
+#             # Apply validation rules
+#             if validation_rules:
+#                 for field_name, validation_func in validation_rules.items():
+#                     if field_name in data:
+#                         try:
+#                             is_valid, error_message = validation_func(data[field_name])
+#                             if not is_valid:
+#                                 return jsonify({
+#                                     'success': False,
+#                                     'error': f'Validation failed for field "{field_name}": {error_message}',
+#                                     'code': 'VALIDATION_ERROR',
+#                                     'field': field_name
+#                                 }), 400
+#                         except Exception as e:
+#                             return jsonify({
+#                                 'success': False,
+#                                 'error': f'Validation error for field "{field_name}": {str(e)}',
+#                                 'code': 'VALIDATION_EXCEPTION',
+#                                 'field': field_name
+#                             }), 500
             
-            # Add validated data to kwargs
-            kwargs['validated_data'] = data
-            return f(*args, **kwargs)
+#             # Add validated data to kwargs
+#             kwargs['validated_data'] = data
+#             return f(*args, **kwargs)
         
-        return decorated_function
-    return decorator
+#         return decorated_function
+#     return decorator
 
-# Validation helper functions
-def validate_user_id(user_id):
-    """Validate user ID format"""
-    if not isinstance(user_id, str):
-        return False, "User ID must be a string"
-    if len(user_id.strip()) == 0:
-        return False, "User ID cannot be empty"
-    if len(user_id) > 100:
-        return False, "User ID too long (max 100 characters)"
-    return True, None
+# # Validation helper functions
+# def validate_user_id(user_id):
+#     """Validate user ID format"""
+#     if not isinstance(user_id, int):
+#         return False, "User ID must be a string"
+#     if len(user_id.strip()) == 0:
+#         return False, "User ID cannot be empty"
+#     if len(user_id) > 100:
+#         return False, "User ID too long (max 100 characters)"
+#     return True, None
 
-def validate_cred_id(cred_id):
-    """Validate credential ID format"""
-    if not isinstance(cred_id, str):
-        return False, "Credential ID must be a string"
-    if len(cred_id.strip()) == 0:
-        return False, "Credential ID cannot be empty"
-    if len(cred_id) > 100:
-        return False, "Credential ID too long (max 100 characters)"
-    return True, None
+# def validate_cred_id(cred_id):
+#     """Validate credential ID format"""
+#     if not isinstance(cred_id, int):
+#         return False, "Credential ID must be a string"
+#     if len(cred_id.strip()) == 0:
+#         return False, "Credential ID cannot be empty"
+#     if len(cred_id) > 100:
+#         return False, "Credential ID too long (max 100 characters)"
+#     return True, None
 
-def validate_activity_name(activity_name):
-    """Validate activity name"""
-    if not isinstance(activity_name, str):
-        return False, "Activity name must be a string"
-    if len(activity_name.strip()) == 0:
-        return False, "Activity name cannot be empty"
-    if len(activity_name) > 200:
-        return False, "Activity name too long (max 200 characters)"
-    return True, None
+# def validate_activity_name(activity_name):
+#     """Validate activity name"""
+#     if not isinstance(activity_name, str):
+#         return False, "Activity name must be a string"
+#     if len(activity_name.strip()) == 0:
+#         return False, "Activity name cannot be empty"
+#     if len(activity_name) > 200:
+#         return False, "Activity name too long (max 200 characters)"
+#     return True, None
 
-def validate_date(date_str):
-    """Validate date format"""
-    if not isinstance(date_str, str):
-        return False, "Date must be a string"
+# def validate_date(date_str):
+#     """Validate date format"""
+#     if not isinstance(date_str, str):
+#         return False, "Date must be a string"
     
-    # Try multiple date formats
-    date_formats = [
-        '%Y-%m-%d',
-        '%Y-%m-%d %H:%M:%S',
-        '%d/%m/%Y',
-        '%m/%d/%Y',
-        '%Y-%m-%dT%H:%M:%S',
-        '%Y-%m-%dT%H:%M:%SZ'
-    ]
+#     # Try multiple date formats
+#     date_formats = [
+#         '%Y-%m-%d',
+#         '%Y-%m-%d %H:%M:%S',
+#         '%d/%m/%Y',
+#         '%m/%d/%Y',
+#         '%Y-%m-%dT%H:%M:%S',
+#         '%Y-%m-%dT%H:%M:%SZ'
+#     ]
     
-    for fmt in date_formats:
-        try:
-            datetime.strptime(date_str, fmt)
-            return True, None
-        except ValueError:
-            continue
+#     for fmt in date_formats:
+#         try:
+#             datetime.strptime(date_str, fmt)
+#             return True, None
+#         except ValueError:
+#             continue
     
-    return False, "Invalid date format. Use formats like YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"
+#     return False, "Invalid date format. Use formats like YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"
 
-def validate_ip(ip_str):
-    """Validate IP address format"""
-    if not isinstance(ip_str, str):
-        return False, "IP address must be a string"
+# def validate_ip(ip_str):
+#     """Validate IP address format"""
+#     if not isinstance(ip_str, str):
+#         return False, "IP address must be a string"
     
-    try:
-        ipaddress.ip_address(ip_str)
-        return True, None
-    except ValueError:
-        return False, "Invalid IP address format"
+#     try:
+#         ipaddress.ip_address(ip_str)
+#         return True, None
+#     except ValueError:
+#         return False, "Invalid IP address format"
 
 # Load Blockchain account and contract
 def initialize_app_components():
@@ -1282,89 +1283,34 @@ def health_check():
 
 @app.route('/api/audit-trail', methods=['POST'])
 @require_auth
-@validate_request_data(
-    required_fields=['userID', 'credID', 'activityName', 'date', 'ip'],
-    validation_rules={
-        'userID': validate_user_id,
-        'credID': validate_cred_id,
-        'activityName': validate_activity_name,
-        'date': validate_date,
-        'ip': validate_ip
-    }
-)
-def create_activity_log(validated_data):
+def create_activity_log():
     """Create a new activity log for the authenticated user"""
     try:
-        # Ensure we have account and contract loaded
-        if not account_address or not private_key or not contract:
-            logger.error("Account or contract not initialized")
-            return jsonify({
-                'success': False,
-                'error': 'System not properly initialized',
-                'code': 'INITIALIZATION_ERROR'
-            }), 500
+        data = request.get_json()
+
+        required_fields = ['cred_id', 'activity_name']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'Missing required field: {field}'}), 400
         
-        # Check if log with this credID already exists
-        exists = contract.functions.activityLogExists(validated_data['credID']).call()
-        if exists:
-            return jsonify({
-                'success': False,
-                'error': 'Activity log with this credID already exists',
-                'code': 'DUPLICATE_CRED_ID'
-            }), 409
-        
-        # Build transaction
-        txn = contract.functions.createActivityLog(
-            validated_data['userID'],
-            validated_data['credID'],
-            validated_data['activityName'],
-            validated_data['date'],
-            validated_data['ip']
-        ).build_transaction({
-            'chainId': CHAIN_ID,
-            'gas': 500000,
-            'gasPrice': w3.to_wei('20', 'gwei'),
-            'nonce': w3.eth.get_transaction_count(account_address),
-        })
-        
-        # Sign and send transaction
-        signed_txn = w3.eth.account.sign_transaction(txn, private_key)
-        tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
-        
-        # Wait for transaction receipt
-        tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=300)
-        
-        # Get the generated log ID from transaction logs
-        log_id = None
-        for log in tx_receipt.logs:
-            try:
-                decoded_log = contract.events.ActivityLogCreated().process_log(log)
-                log_id = decoded_log['args']['logID']
-                break
-            except:
-                continue
-        
-        logger.info(f"Activity log created: {log_id}")
+        # Add to blockchain
+        result = bcc.blockchain_service.add_audit_entry(
+            user_id=request.current_user_id,
+            cred_id=data.get('cred_id', ''),
+            activity_name=data.get('activity_name'),
+            ip_address=get_client_ip(request),
+        )
         
         return jsonify({
             'success': True,
-            'message': 'Activity log created successfully',
-            'data': {
-                'logID': log_id,
-                'credID': validated_data['credID'],
-                'transaction_hash': tx_hash.hex(),
-                'block_number': tx_receipt.blockNumber,
-                'gas_used': tx_receipt.gasUsed
-            }
+            'message': 'Audit entry created successfully',
+            'data': result
         }), 201
         
     except Exception as e:
-        logger.error(f"Error creating activity log: {e}")
         return jsonify({
             'success': False,
-            'error': 'Failed to create activity log',
-            'details': str(e),
-            'code': 'CREATION_ERROR'
+            'error': str(e)
         }), 500
 
 # def create_activity_log():
@@ -1419,17 +1365,8 @@ def get_activity_log_by_user(user_id):
                 'code': 'CONTRACT_ERROR'
             }), 500
         
-        # Validate user_id
-        is_valid, error_msg = validate_user_id(user_id)
-        if not is_valid:
-            return jsonify({
-                'success': False,
-                'error': error_msg,
-                'code': 'INVALID_USER_ID'
-            }), 400
-        
         # Get user's log details
-        log_details = contract.functions.getActivityLogDetailsByUser(user_id).call()
+        log_details = bcc.blockchain_service.get_user_audit_entries(user_id)
         
         # Structure the response
         logs = []

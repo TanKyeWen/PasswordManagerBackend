@@ -16,7 +16,7 @@ type SmartContract struct {
 
 // ActivityLog represents an activity log entry
 type ActivityLog struct {
-	LogID		 string `json:"log_id`
+	LogID		 string `json:"log_id"`
 	UserID       string `json:"user_id"`
 	CredID       string `json:"cred_id,omitempty"`
 	ActivityName string `json:"activity_name"`

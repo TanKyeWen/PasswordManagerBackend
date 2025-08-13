@@ -1,211 +1,236 @@
-# ============ bcc.py ============
 from web3 import Web3
-import json
-import os
-import logging
+import uuid
+from datetime import datetime
 
-logger = logging.getLogger(__name__)
+# Blockchain Configuration
+HARDHAT_URL = "http://127.0.0.1:8545"
+CONTRACT_ADDRESS = "YOUR_CONTRACT_ADDRESS_HERE"
 
-# Configuration
-BESU_URL = "http://localhost:8545"
-CHAIN_ID = 1337
+# Updated Contract ABI for new structure
+CONTRACT_ABI = [
+    {
+        "inputs": [],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "inputs": [
+            {"internalType": "string", "name": "_logID", "type": "string"},
+            {"internalType": "string", "name": "_userID", "type": "string"},
+            {"internalType": "string", "name": "_credID", "type": "string"},
+            {"internalType": "string", "name": "_activityName", "type": "string"},
+            {"internalType": "string", "name": "_date", "type": "string"},
+            {"internalType": "string", "name": "_ip", "type": "string"},
+            {"internalType": "string", "name": "_timestamp", "type": "string"}
+        ],
+        "name": "addAuditEntry",
+        "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [{"internalType": "string", "name": "_userID", "type": "string"}],
+        "name": "getUserAuditEntries",
+        "outputs": [
+            {
+                "components": [
+                    {"internalType": "string", "name": "logID", "type": "string"},
+                    {"internalType": "string", "name": "userID", "type": "string"},
+                    {"internalType": "string", "name": "credID", "type": "string"},
+                    {"internalType": "string", "name": "activityName", "type": "string"},
+                    {"internalType": "string", "name": "date", "type": "string"},
+                    {"internalType": "string", "name": "ip", "type": "string"},
+                    {"internalType": "string", "name": "timestamp", "type": "string"}
+                ],
+                "internalType": "struct AuditTrail.AuditEntry[]",
+                "name": "",
+                "type": "tuple[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+]
 
-# Initialize Web3
-w3 = Web3(Web3.HTTPProvider(BESU_URL))
-
-def load_account(accounts_dir="besu-network/accounts"):
-    """
-    Load account from file and return the values
+def __init__(self):
+    self.w3 = Web3(Web3.HTTPProvider(HARDHAT_URL))
     
-    Args:
-        accounts_dir (str): Directory containing account files
-        
-    Returns:
-        tuple: (account_address, private_key) or (None, None) if failed
-    """
-    if not os.path.exists(accounts_dir):
-        logger.error("No accounts found. Please create an account first.")
-        return None, None
+    # Check connection
+    if not self.w3.is_connected():
+        raise Exception("Failed to connect to Hardhat network")
     
-    # Find the first account file
-    for filename in os.listdir(accounts_dir):
-        if filename.endswith('.json'):
-            try:
-                with open(os.path.join(accounts_dir, filename), 'r') as f:
-                    account_data = json.load(f)
-                    account_address = account_data['address']
-                    private_key = account_data['private_key']
-                    logger.info(f"Account loaded: {account_address}")
-                    return account_address, private_key
-            except Exception as e:
-                logger.error(f"Error loading account from {filename}: {e}")
-                continue
+    # Get default account (first account from Hardhat)
+    self.account = self.w3.eth.accounts[0]
+    self.w3.eth.default_account = self.account
     
-    logger.error("No valid account found")
-    return None, None
-
-def load_contract(contract_file="besu-network/contracts/ActivityLogContract.json"):
-    """
-    Load deployed contract and return the contract object
-    
-    Args:
-        contract_file (str): Path to contract JSON file
-        
-    Returns:
-        Contract object or None if failed
-    """
-    if not os.path.exists(contract_file):
-        logger.error("Contract not found. Please deploy the contract first.")
-        return None
-    
-    try:
-        with open(contract_file, 'r') as f:
-            contract_data = json.load(f)
-        
-        contract = w3.eth.contract(
-            address=contract_data['address'],
-            abi=contract_data['abi']
+    # Initialize contract
+    if CONTRACT_ADDRESS != "YOUR_CONTRACT_ADDRESS_HERE":
+        self.contract = self.w3.eth.contract(
+            address=CONTRACT_ADDRESS,
+            abi=CONTRACT_ABI
         )
-        
-        logger.info(f"Contract loaded: {contract_data['address']}")
-        return contract
-        
-    except Exception as e:
-        logger.error(f"Error loading contract: {e}")
-        return None
+    else:
+        self.contract = None
+        print("Warning: Contract address not set!")
 
-def get_web3_instance():
-    """
-    Get the Web3 instance
-    
-    Returns:
-        Web3: The Web3 instance
-    """
-    return w3
+def generate_log_id(self):
+    """Generate a unique log ID"""
+    return f"log_{uuid.uuid4().hex[:12]}"
 
-def get_chain_config():
-    """
-    Get blockchain configuration
+def get_current_timestamp(self):
+    """Get current timestamp as string"""
+    return str(int(datetime.now().timestamp()))
+
+def get_current_date(self):
+    """Get current date as string (YYYY-MM-DD)"""
+    return datetime.now().strftime("%Y-%m-%d")
+
+def add_audit_entry(self, user_id, cred_id, activity_name, ip_address=None, log_id=None, date=None, timestamp=None):
+    """Add a new audit entry to the blockchain"""
+    if not self.contract:
+        raise Exception("Contract not initialized")
     
-    Returns:
-        dict: Configuration settings
-    """
+    # Generate defaults if not provided
+    if not log_id:
+        log_id = self.generate_log_id()
+    if not date:
+        date = self.get_current_date()
+    if not timestamp:
+        timestamp = self.get_current_timestamp()
+    if not ip_address:
+        ip_address = "unknown"
+    if not cred_id:
+        cred_id = ""
+    
+    # Send transaction
+    tx_hash = self.contract.functions.addAuditEntry(
+        log_id, user_id, cred_id, activity_name, date, ip_address, timestamp
+    ).transact({'from': self.account})
+    
+    # Wait for transaction receipt
+    receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+    
     return {
-        'besu_url': BESU_URL,
-        'chain_id': CHAIN_ID
+        'success': True,
+        'log_id': log_id,
+        'transaction_hash': tx_hash.hex(),
+        'block_number': receipt.blockNumber,
+        'user_id': user_id,
+        'activity_name': activity_name,
+        'date': date,
+        'timestamp': timestamp
     }
 
-def validate_connection():
-    """
-    Validate blockchain connection
+def get_audit_entry(self, log_id):
+    """Get a specific audit entry by LogID"""
+    if not self.contract:
+        raise Exception("Contract not initialized")
     
-    Returns:
-        bool: True if connected, False otherwise
-    """
     try:
-        return w3.is_connected()
+        entry = self.contract.functions.getAuditEntry(log_id).call()
+        return {
+            'log_id': entry[0],
+            'user_id': entry[1],
+            'cred_id': entry[2],
+            'activity_name': entry[3],
+            'date': entry[4],
+            'ip': entry[5],
+            'timestamp': entry[6]
+        }
     except Exception as e:
-        logger.error(f"Connection validation failed: {e}")
+        return None
+
+def get_user_audit_entries(self, user_id):
+    """Get all audit entries for a specific user"""
+    if not self.contract:
+        raise Exception("Contract not initialized")
+    
+    try:
+        entries = self.contract.functions.getUserAuditEntries(user_id).call()
+        result = []
+        
+        for entry in entries:
+            result.append({
+                'log_id': entry[0],
+                'user_id': entry[1],
+                'cred_id': entry[2],
+                'activity_name': entry[3],
+                'date': entry[4],
+                'ip': entry[5],
+                'timestamp': entry[6]
+            })
+        
+        return result
+    except Exception as e:
+        print(f"Error getting user audit entries: {str(e)}")
+        return []
+
+def get_user_log_ids(self, user_id):
+    """Get all log IDs for a specific user"""
+    if not self.contract:
+        raise Exception("Contract not initialized")
+    
+    try:
+        log_ids = self.contract.functions.getUserLogIDs(user_id).call()
+        return log_ids
+    except Exception as e:
+        print(f"Error getting user log IDs: {str(e)}")
+        return []
+
+def audit_entry_exists(self, log_id):
+    """Check if audit entry exists"""
+    if not self.contract:
+        raise Exception("Contract not initialized")
+    
+    try:
+        return self.contract.functions.auditEntryExists(log_id).call()
+    except Exception as e:
         return False
 
-def get_account_balance(account_address):
-    """
-    Get account balance
+def get_audit_entries_by_activity(self, activity_name):
+    """Get all audit entries for a specific activity"""
+    if not self.contract:
+        raise Exception("Contract not initialized")
     
-    Args:
-        account_address (str): Ethereum address
-        
-    Returns:
-        float: Balance in ETH, 0 if error
-    """
     try:
-        if not account_address:
-            return 0
+        entries = self.contract.functions.getAuditEntriesByActivity(activity_name).call()
+        result = []
         
-        balance = w3.eth.get_balance(account_address)
-        return float(w3.from_wei(balance, 'ether'))
+        for entry in entries:
+            result.append({
+                'log_id': entry[0],
+                'user_id': entry[1],
+                'cred_id': entry[2],
+                'activity_name': entry[3],
+                'date': entry[4],
+                'ip': entry[5],
+                'timestamp': entry[6]
+            })
         
+        return result
     except Exception as e:
-        logger.error(f"Error getting balance for {account_address}: {e}")
+        print(f"Error getting audit entries by activity: {str(e)}")
+        return []
+
+def get_total_audit_entries(self):
+    """Get total number of audit entries"""
+    if not self.contract:
+        raise Exception("Contract not initialized")
+    
+    try:
+        return self.contract.functions.getTotalAuditEntries().call()
+    except Exception as e:
+        print(f"Error getting total audit entries: {str(e)}")
         return 0
 
-def create_account_file(address, private_key, accounts_dir="besu-network/accounts"):
-    """
-    Create account file with given credentials
-    
-    Args:
-        address (str): Account address
-        private_key (str): Private key
-        accounts_dir (str): Directory to save account file
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        os.makedirs(accounts_dir, exist_ok=True)
-        
-        account_data = {
-            "address": address,
-            "private_key": private_key
-        }
-        
-        account_file = os.path.join(accounts_dir, "account.json")
-        with open(account_file, 'w') as f:
-            json.dump(account_data, f, indent=2)
-        
-        logger.info(f"Account file created: {account_file}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error creating account file: {e}")
-        return False
+def is_connected(self):
+    """Check if connected to blockchain"""
+    return self.w3.is_connected()
 
-def sign_transaction(transaction, private_key):
-    """
-    Sign a transaction with private key
-    
-    Args:
-        transaction: Transaction dictionary
-        private_key (str): Private key to sign with
-        
-    Returns:
-        Signed transaction or None if failed
-    """
+def get_latest_block(self):
+    """Get latest block number"""
     try:
-        return w3.eth.account.sign_transaction(transaction, private_key)
+        return self.w3.eth.block_number if self.is_connected() else None
     except Exception as e:
-        logger.error(f"Error signing transaction: {e}")
-        return None
-
-def send_signed_transaction(signed_txn):
-    """
-    Send a signed transaction
-    
-    Args:
-        signed_txn: Signed transaction
-        
-    Returns:
-        Transaction hash or None if failed
-    """
-    try:
-        return w3.eth.send_raw_transaction(signed_txn.raw_transaction)
-    except Exception as e:
-        logger.error(f"Error sending transaction: {e}")
-        return None
-
-def wait_for_receipt(tx_hash, timeout=300):
-    """
-    Wait for transaction receipt
-    
-    Args:
-        tx_hash: Transaction hash
-        timeout (int): Timeout in seconds
-        
-    Returns:
-        Transaction receipt or None if failed
-    """
-    try:
-        return w3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
-    except Exception as e:
-        logger.error(f"Error waiting for receipt: {e}")
+        print(f"Error getting latest block: {str(e)}")
         return None
