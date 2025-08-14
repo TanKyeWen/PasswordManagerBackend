@@ -4,3 +4,6 @@ besu-network/accounts/
 
 # Env file
 flask-app/.env
+
+# Secret Keys
+cert/
