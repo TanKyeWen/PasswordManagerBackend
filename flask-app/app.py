@@ -1,5 +1,8 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+import ssl
+from flask import Flask, request, jsonify, redirect, url_for, session
 from flask_cors import CORS
+from pathlib import Path
+from werkzeug.middleware.proxy_fix import ProxyFix
 from functools import wraps
 import mysql.connector
 from mysql.connector import Error
@@ -9,6 +12,7 @@ import encryption_module as enc # Encryption and decryption functions for creden
 import password_generation_module as pg # Password generation functions
 import password_health_module as ph # Password health funtions
 from blockchain_communication_module import BlockchainService
+import init_audit_trail as iat
 import logging
 import re # For email validation
 from dotenv import load_dotenv
@@ -36,8 +40,12 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)  # Adjust as need
 app.config.update(
     SESSION_COOKIE_SAMESITE='None',
     SESSION_COOKIE_SECURE=True,
-    SESSION_COOKIE_HTTPONLY=True
+    SESSON_COOKIE_HTTPONLY=True,
+    PREFERRED_URL_SCHEME='https',
 )
+
+# Trust X-Forwarded-* from Vite's proxy (set xfwd: true in Vite)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # AES Setup
 AES_secret_key = bytes.fromhex(os.getenv('AES_SECRET_KEY'))
@@ -77,7 +85,7 @@ def init_database():
             cursor = connection.cursor()
             
             # Quick drop for development/testing
-            cursor.execute("DROP TABLE IF EXISTS credentials, users, encryption_keys")
+            cursor.execute("DROP TABLE IF EXISTS credentials, users, audit_trail")
             connection.commit()
             logger.info("Dropped existing tables if they existed")
 
@@ -110,9 +118,25 @@ def init_database():
             """
             logger.info("Create Credentials table SQL: %s", create_credentials_table)
 
+            # Create Audit Trail table
+            create_audit_trail_table = """
+            CREATE TABLE IF NOT EXISTS audit_trail (
+                log_id VARCHAR(250) PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                cred_id VARCHAR(255) NOT NULL,
+                activity_name VARCHAR(255) NOT NULL,
+                date VARCHAR(255) NOT NULL,
+                ip_address VARCHAR(50) NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(uid) ON DELETE CASCADE
+            )
+            """
+            logger.info("Create Credentials table SQL: %s", create_audit_trail_table)
+
             # Execute separately
             cursor.execute(create_users_table)
             cursor.execute(create_credentials_table)
+            cursor.execute(create_audit_trail_table)
             connection.commit()
             print("Database initialized successfully")
             
@@ -196,172 +220,6 @@ def require_auth(f, check_resource_owner=True):
             }), 500
    
     return decorated_function
-
-# def validate_request_data(required_fields=None, validation_rules=None):
-#     """
-#     Universal validation decorator for Flask API calls
-    
-#     Args:
-#         required_fields (list): List of required field names
-#         validation_rules (dict): Dictionary of field_name: validation_function pairs
-#     """
-#     def decorator(f):
-#         @wraps(f)
-#         def decorated_function(*args, **kwargs):
-#             # Check if request contains JSON data
-#             if not request.is_json:
-#                 return jsonify({
-#                     'success': False,
-#                     'error': 'Request must contain JSON data',
-#                     'code': 'INVALID_REQUEST_FORMAT'
-#                 }), 400
-            
-#             try:
-#                 data = request.get_json()
-#             except Exception as e:
-#                 return jsonify({
-#                     'success': False,
-#                     'error': 'Invalid JSON format',
-#                     'code': 'INVALID_JSON',
-#                     'details': str(e)
-#                 }), 400
-            
-#             if not data:
-#                 return jsonify({
-#                     'success': False,
-#                     'error': 'Empty request body',
-#                     'code': 'EMPTY_REQUEST'
-#                 }), 400
-            
-#             # Check required fields
-#             if required_fields:
-#                 missing_fields = [field for field in required_fields if field not in data or not data[field]]
-#                 if missing_fields:
-#                     return jsonify({
-#                         'success': False,
-#                         'error': f'Missing required fields: {", ".join(missing_fields)}',
-#                         'code': 'MISSING_FIELDS',
-#                         'missing_fields': missing_fields
-#                     }), 400
-            
-#             # Apply validation rules
-#             if validation_rules:
-#                 for field_name, validation_func in validation_rules.items():
-#                     if field_name in data:
-#                         try:
-#                             is_valid, error_message = validation_func(data[field_name])
-#                             if not is_valid:
-#                                 return jsonify({
-#                                     'success': False,
-#                                     'error': f'Validation failed for field "{field_name}": {error_message}',
-#                                     'code': 'VALIDATION_ERROR',
-#                                     'field': field_name
-#                                 }), 400
-#                         except Exception as e:
-#                             return jsonify({
-#                                 'success': False,
-#                                 'error': f'Validation error for field "{field_name}": {str(e)}',
-#                                 'code': 'VALIDATION_EXCEPTION',
-#                                 'field': field_name
-#                             }), 500
-            
-#             # Add validated data to kwargs
-#             kwargs['validated_data'] = data
-#             return f(*args, **kwargs)
-        
-#         return decorated_function
-#     return decorator
-
-# # Validation helper functions
-# def validate_user_id(user_id):
-#     """Validate user ID format"""
-#     if not isinstance(user_id, int):
-#         return False, "User ID must be a string"
-#     if len(user_id.strip()) == 0:
-#         return False, "User ID cannot be empty"
-#     if len(user_id) > 100:
-#         return False, "User ID too long (max 100 characters)"
-#     return True, None
-
-# def validate_cred_id(cred_id):
-#     """Validate credential ID format"""
-#     if not isinstance(cred_id, int):
-#         return False, "Credential ID must be a string"
-#     if len(cred_id.strip()) == 0:
-#         return False, "Credential ID cannot be empty"
-#     if len(cred_id) > 100:
-#         return False, "Credential ID too long (max 100 characters)"
-#     return True, None
-
-# def validate_activity_name(activity_name):
-#     """Validate activity name"""
-#     if not isinstance(activity_name, str):
-#         return False, "Activity name must be a string"
-#     if len(activity_name.strip()) == 0:
-#         return False, "Activity name cannot be empty"
-#     if len(activity_name) > 200:
-#         return False, "Activity name too long (max 200 characters)"
-#     return True, None
-
-# def validate_date(date_str):
-#     """Validate date format"""
-#     if not isinstance(date_str, str):
-#         return False, "Date must be a string"
-    
-#     # Try multiple date formats
-#     date_formats = [
-#         '%Y-%m-%d',
-#         '%Y-%m-%d %H:%M:%S',
-#         '%d/%m/%Y',
-#         '%m/%d/%Y',
-#         '%Y-%m-%dT%H:%M:%S',
-#         '%Y-%m-%dT%H:%M:%SZ'
-#     ]
-    
-#     for fmt in date_formats:
-#         try:
-#             datetime.strptime(date_str, fmt)
-#             return True, None
-#         except ValueError:
-#             continue
-    
-#     return False, "Invalid date format. Use formats like YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"
-
-# def validate_ip(ip_str):
-#     """Validate IP address format"""
-#     if not isinstance(ip_str, str):
-#         return False, "IP address must be a string"
-    
-#     try:
-#         ipaddress.ip_address(ip_str)
-#         return True, None
-#     except ValueError:
-#         return False, "Invalid IP address format"
-
-# Load Blockchain account and contract
-def initialize_app_components():
-    """Initialize account and contract, storing them globally for this file"""
-    global account_address, private_key, contract
-    
-    try:
-        # Load account using return values from bcc
-        account_address, private_key = bcc.load_account()
-        if not account_address:
-            logger.error("Failed to load account")
-            return False
-        
-        # Load contract using return values from bcc
-        contract = bcc.load_contract()
-        if not contract:
-            logger.error("Failed to load contract")
-            return False
-        
-        logger.info(f"App components initialized - Account: {account_address}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error initializing app components: {e}")
-        return False
 
 @app.route('/api/user/session', methods=['GET', 'OPTIONS'])
 @require_auth
@@ -1286,10 +1144,13 @@ def create_activity_log():
             client_ip
         )
         
+        if bool(data.get('cred_id')):
+            cred_id = ''
+
         # Add to blockchain
         result = bcc.add_audit_entry(
             user_id=request.current_user_id,
-            cred_id=data.get('cred_id', ''),
+            cred_id=cred_id,
             activity_name=data.get('activity_name'),
             ip_address=client_ip,
         )
@@ -1299,7 +1160,7 @@ def create_activity_log():
         if isinstance(result, dict):
             tx_hash = result.get('tx_hash') or result.get('transactionHash')
         logger.info(
-            "Audit entry created for actor_user_id=%s tx=%s",
+            "Audit entry created for user_id=%s tx=%s",
             getattr(request, "current_user_id", "n/a"),
             tx_hash if tx_hash else str(result)[:200]  # avoid huge logs
         )
@@ -1354,53 +1215,47 @@ def create_activity_log():
 #     except Exception as e:
 #         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/activity/<user_id>', methods=['GET'])
+@app.route('/api/audit-trail/<int:user_id>', methods=['GET', 'OPTIONS'])
 @require_auth
 def get_activity_log_by_user(user_id):
     """Get all activity logs for specific user from blockchain"""
+
+    # Handle OPTIONS request for CORS
+    if request.method == 'OPTIONS':
+        return jsonify({'success': True}), 200
+    
+    if str(user_id).strip() != str(request.current_user_id).strip():
+        logger.warning(
+            "Unauthorized access attempt to user activity logs by user_id=%s for user_id=%s",
+            getattr(request, "current_user_id", "n/a"),
+            user_id
+        )
+        return jsonify({
+            'success': False,
+            'error': 'Unauthorized access to user activity logs'
+        }), 403
+
     try:
         logger.info(
-            "GET /api/activity/%s requested by actor_user_id=%s",
+            "GET /api/audit-trail/%s requested by user_id=%s",
             user_id, getattr(request, "current_user_id", "n/a")
         )
-
-        # Ensure contract is loaded
-        if not contract:
-            logger.error("Contract not initialized")
-            return jsonify({
-                'success': False,
-                'error': 'Contract not initialized',
-                'code': 'CONTRACT_ERROR'
-            }), 500
         
         logger.info("Fetching audit entries for user_id=%s from blockchain", user_id)
 
         # Get user's log details
-        log_details = bcc.get_user_audit_entries(user_id)
-        
-        # Structure the response
-        logs = []
-        for i in range(len(log_details[0])):  # log_details[0] is logIDs array
-            logs.append({
-                'logID': log_details[0][i],
-                'credID': log_details[1][i],
-                'activityName': log_details[2][i],
-                'date': log_details[3][i],
-                'ip': log_details[4][i],
-                'timestamp': log_details[5][i]
-            })
-
+        log_details = bcc.get_user_audit_entries(str(user_id))
         logger.info(
             "Found %d audit logs for user_id=%s",
-            len(logs), user_id
+            len(log_details), user_id
         )
         
         return jsonify({
             'success': True,
             'data': {
                 'userID': user_id,
-                'total_logs': len(logs),
-                'logs': logs
+                'total_logs': len(log_details),
+                'logs': log_details
             }
         })
         
@@ -1454,4 +1309,16 @@ def internal_error(error):
 if __name__ == '__main__':
     # Initialize database on startup
     # init_database()
-    app.run(port=9011, debug=True)
+
+    # Initialize audit trail table
+    iat.seed_audit_trail(bcc)
+
+    # Create SSL context
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain('../cert/server.crt', '../cert/server.key')
+    
+    app.run(
+        ssl_context=context,
+        port=9011,
+        debug=True
+        )

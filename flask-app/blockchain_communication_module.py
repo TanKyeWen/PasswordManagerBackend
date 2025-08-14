@@ -3,6 +3,8 @@ import uuid
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from typing import List, Dict, Any
+import init_audit_trail as init
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -10,8 +12,6 @@ load_dotenv()  # Load environment variables from .env file
 HARDHAT_URL = os.getenv("HARDHAT_URL", "http://127.0.0.1:8545")
 CHAIN_ID = int(os.getenv("CHAIN_ID", "31337"))
 CONTRACT_ADDRESS = os.getenv("CONTRACT_ADDRESS")
-HARDHAT_URL = "http://127.0.0.1:8545"
-CONTRACT_ADDRESS = "YOUR_CONTRACT_ADDRESS_HERE"
 
 # Updated Contract ABI for new structure
 CONTRACT_ABI = [
@@ -83,7 +83,7 @@ class BlockchainService:
 
     def generate_log_id(self):
         """Generate a unique log ID"""
-        return f"log_{uuid.uuid4().hex[:12]}"
+        return f"log_{uuid.uuid4().hex[:4]}"
 
     def get_current_timestamp(self):
         """Get current timestamp as string"""
@@ -117,6 +117,10 @@ class BlockchainService:
         
         # Wait for transaction receipt
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+
+        init.add_audit_entry(
+            log_id, user_id, cred_id, activity_name, date, ip_address, timestamp
+        )
         
         return {
             'success': True,
@@ -129,7 +133,7 @@ class BlockchainService:
             'timestamp': timestamp
         }
 
-    def get_user_audit_entries(self, user_id):
+    def get_user_audit_entries(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all audit entries for a specific user"""
         if not self.contract:
             raise Exception("Contract not initialized")
@@ -138,18 +142,18 @@ class BlockchainService:
             entries = self.contract.functions.getUserAuditEntries(user_id).call()
             result = []
             
-            for entry in entries:
+            for (logID, userID, credID, activityName, date, ip, timestamp) in entries:
                 result.append({
-                    'log_id': entry[0],
-                    'user_id': entry[1],
-                    'cred_id': entry[2],
-                    'activity_name': entry[3],
-                    'date': entry[4],
-                    'ip': entry[5],
-                    'timestamp': entry[6]
+                    "log_id": logID,
+                    "user_id": userID,
+                    "cred_id": credID,
+                    "activity_name": activityName,
+                    "date": date,
+                    "ip": ip,
+                    "timestamp": timestamp,
                 })
-            
             return result
+        
         except Exception as e:
             print(f"Error getting user audit entries: {str(e)}")
             return []
