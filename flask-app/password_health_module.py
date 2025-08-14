@@ -6,6 +6,7 @@ import os
 import mysql.connector
 from mysql.connector import Error
 import mysql
+import zxcvbn
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -80,18 +81,23 @@ def process_credentials_for_duplicates(connection, user_id, encryption_module, m
                         # Hash the decrypted password
                         password_hash = hashlib.sha256(decrypted_password.encode()).hexdigest()
                         password_hash_to_credentials[password_hash].append(credential_record['id'])
+
+                        # Check password strength
+                        strength_score = password_strength_checker(decrypted_password)
+                        if strength_score <= 2:
+                            password_hash_to_credentials[password_hash].append(credential_record['id'])
                 except Exception as e:
                     logger.error(f"Error processing credential ID {credential_record['id']}: {e}")
     
-    # Return only duplicates
-    duplicates = [
+    # Return only passwords that are duplicates and weak
+    password = [
         credential_id
         for credential_ids in password_hash_to_credentials.values()
         if len(credential_ids) > 1
         for credential_id in credential_ids
     ]
     
-    return duplicates
+    return password
 
 def decrypt_credential_safe(encryption_module, encrypted_password):
     """
@@ -102,3 +108,11 @@ def decrypt_credential_safe(encryption_module, encrypted_password):
     except Exception as e:
         logger.error(f"Decryption error: {e}")
         return None
+    
+def password_strength_checker(password):
+    """
+    Check the strength of a password based on length and character variety
+    """
+    result = zxcvbn.zxcvbn(password)
+
+    return result['score']

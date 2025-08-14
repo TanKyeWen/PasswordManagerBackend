@@ -1,7 +1,6 @@
 import string
 import secrets
 import re
-import zxcvbn
 
 def get_word_list():
     # Load a word list from a file or define it directly
