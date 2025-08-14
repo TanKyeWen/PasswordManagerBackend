@@ -1144,8 +1144,7 @@ def create_activity_log():
             client_ip
         )
         
-        if bool(data.get('cred_id')):
-            cred_id = ''
+        cred_id = data.get('cred_id')
 
         # Add to blockchain
         result = bcc.add_audit_entry(
