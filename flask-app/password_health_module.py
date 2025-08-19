@@ -78,14 +78,13 @@ def process_credentials_for_duplicates(connection, user_id, encryption_module, m
                 try:
                     decrypted_password = future.result()
                     if decrypted_password:
-                        # Hash the decrypted password
                         password_hash = hashlib.sha256(decrypted_password.encode()).hexdigest()
-                        password_hash_to_credentials[password_hash].append(credential_record['id'])
-
-                        # Check password strength
-                        strength_score = password_strength_checker(decrypted_password)
-                        if strength_score <= 2:
+                        is_weak = password_strength_checker(decrypted_password) <= 2
+                        is_duplicate = password_hash in password_hash_to_credentials
+                        
+                        if is_weak or is_duplicate:
                             password_hash_to_credentials[password_hash].append(credential_record['id'])
+
                 except Exception as e:
                     logger.error(f"Error processing credential ID {credential_record['id']}: {e}")
     
