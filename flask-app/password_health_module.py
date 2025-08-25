@@ -60,13 +60,15 @@ def process_credentials_for_duplicates(connection, user_id, encryption_module, m
     """
     Process credentials to find duplicates with proper batching and threading
     """
-    password_hash_to_credentials = defaultdict(list)
+    password_credentials = defaultdict(list)
+    weak_password = set()
+    dup_password = set()
     
     # Process each batch
     for batch in fetch_credentials_batch(connection, user_id, batch_size=25):
         # Process batch with threading
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit decryption jobs - CORRECT syntax
+            # Submit decryption jobs
             future_to_credential = {
                 executor.submit(decrypt_credential_safe, encryption_module, record['credential_password']): record
                 for record in batch  # 'record' is each dictionary in the batch
@@ -78,25 +80,25 @@ def process_credentials_for_duplicates(connection, user_id, encryption_module, m
                 try:
                     decrypted_password = future.result()
                     if decrypted_password:
-                        password_hash = hashlib.sha256(decrypted_password.encode()).hexdigest()
-                        is_weak = password_strength_checker(decrypted_password) <= 2
-                        is_duplicate = password_hash in password_hash_to_credentials
-                        
-                        if is_weak or is_duplicate:
-                            password_hash_to_credentials[password_hash].append(credential_record['id'])
+                        password_credentials[decrypted_password].append(credential_record['id'])
+
+                        if password_strength_checker(decrypted_password) <= 2:
+                            weak_password.add(decrypted_password)
 
                 except Exception as e:
                     logger.error(f"Error processing credential ID {credential_record['id']}: {e}")
     
-    # Return only passwords that are duplicates and weak
-    password = [
-        credential_id
-        for credential_ids in password_hash_to_credentials.values()
-        if len(credential_ids) > 1
-        for credential_id in credential_ids
-    ]
+    for password, credential_ids in password_credentials.items():
+        if len(credential_ids) > 1:
+            dup_password.add(password)
+
+    duplicate_weak = []
+    problematic_passwords = weak_password.union(dup_password)
     
-    return password
+    for password in problematic_passwords:
+        duplicate_weak.extend(password_credentials[password])
+   
+    return duplicate_weak
 
 def decrypt_credential_safe(encryption_module, encrypted_password):
     """

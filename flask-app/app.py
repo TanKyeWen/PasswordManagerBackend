@@ -887,23 +887,6 @@ def delete_credential(c_id):
         try:
             cursor = connection.cursor(dictionary=True)
             
-            # Validate owner of the credential
-            validate_query = """
-                SELECT
-                    id
-                FROM credentials 
-                WHERE id = %s AND user_id = %s
-                LIMIT 1
-            """
-            cursor.execute(validate_query, (c_id, user_id))
-            credential = cursor.fetchone()
-            
-            if not credential:
-                return jsonify({
-                    'success': False,
-                    'error': 'Credential not found'
-                }), 404
-            
             # Validate the requested user
             validate_query = """
                 SELECT
@@ -912,7 +895,7 @@ def delete_credential(c_id):
                 WHERE id = %s
                 LIMIT 1
             """
-            cursor.execute(validate_query, (c_id))
+            cursor.execute(validate_query, (c_id,))
             credential = cursor.fetchone()
 
             if str(user_id).strip() != str(credential['user_id']).strip():
@@ -1062,25 +1045,25 @@ def password_health():
             }), 503
         
         try:
-            duplicates = ph.process_credentials_for_duplicates(
+            duplicate_weak = ph.process_credentials_for_duplicates(
                 connection, user_id, enc, max_workers=4
             )
          
-            if duplicates:
-                logger.info(f"Found {len(duplicates)} groups of duplicate passwords for user {user_id}")
+            if duplicate_weak:
+                logger.info(f"Found {len(duplicate_weak)} groups of duplicate passwords for user {user_id}")
                 return jsonify({
                     'success': True,
                     'user_id': user_id,
-                    'duplicate': duplicates,
-                    'duplicates_found': len(duplicates)
+                    'password_group': duplicate_weak,
+                    'weak_dup_len': len(duplicate_weak)
                 }), 200
             
             else:
                 return jsonify({
                     'success': True,
                     'user_id': user_id,
-                    'duplicate_groups': {},
-                    'duplicates_found': 0
+                    'password_group': {},
+                    'weak_dup_len': 0
                 })
             
         except Exception as db_error:
@@ -1095,37 +1078,6 @@ def password_health():
         return jsonify({
             'success': False,
             'error': 'Internal server error'
-        }), 500
-
-    """Health check endpoint"""
-    try:
-        # Get fresh values from bcc functions (don't rely on cached globals for health check)
-        current_address, current_key = bcc.load_account()
-        current_contract = bcc.load_contract()
-        
-        is_connected = w3.is_connected()
-        balance = 0
-        
-        if current_address:
-            try:
-                balance = w3.eth.get_balance(current_address)
-            except Exception as e:
-                logger.warning(f"Could not get balance: {e}")
-        
-        return jsonify({
-            'success': True,
-            'status': 'healthy',
-            'blockchain_connected': is_connected,
-            'account_address': current_address,
-            'account_balance': str(w3.from_wei(balance, 'ether')) + ' ETH' if balance else '0 ETH',
-            'contract_loaded': current_contract is not None,
-            'chain_id': w3.eth.chain_id if is_connected else None
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'status': 'unhealthy',
-            'error': str(e)
         }), 500
 
 @app.route('/api/audit-trail', methods=['POST'])
@@ -1149,7 +1101,7 @@ def create_activity_log():
         # Add to blockchain
         result = bcc.add_audit_entry(
             user_id=request.current_user_id,
-            cred_id=cred_id,
+            cred_id=str(cred_id),
             activity_name=data.get('activity_name'),
             ip_address=client_ip,
         )
@@ -1310,7 +1262,7 @@ if __name__ == '__main__':
     # init_database()
 
     # Initialize audit trail table
-    iat.seed_audit_trail(bcc)
+    # iat.seed_audit_trail(bcc)
 
     # Create SSL context
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

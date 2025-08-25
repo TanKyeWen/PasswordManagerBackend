@@ -80,13 +80,13 @@ def seed_audit_trail(bcc):
         result = cursor.fetchall()
         for row in result:
             bcc.add_audit_entry(
-                log_id=row.log_id,
-                user_id=row.user_id,
-                cred_id=row.cred_id,
-                activity_name=row.activity_name,
-                ip_address=row.client_ip,
-                date=row.date,
-                timestamp=row.timestamp
+                log_id=row[0],
+                user_id=row[1],
+                cred_id=row[2],
+                activity_name=row[3],
+                date=row[4],
+                ip_address=row[5],
+                timestamp=row[6]
             )
 
     except Error as e:

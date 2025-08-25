@@ -87,7 +87,7 @@ class BlockchainService:
 
     def get_current_timestamp(self):
         """Get current timestamp as string"""
-        return str(int(datetime.now().timestamp()))
+        return str(datetime.now().time())
 
     def get_current_date(self):
         """Get current date as string (YYYY-MM-DD)"""
