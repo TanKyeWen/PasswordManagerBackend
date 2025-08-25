@@ -1,6 +1,5 @@
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-import hashlib
 import logging
 import os
 import mysql.connector
