@@ -33,14 +33,12 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SESSION_SECRET_KEY')
 app.config['SECRET_KEY'] = os.getenv('SESSION_SECRET_KEY')
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True if using HTTPS
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_DOMAIN'] = None  # Let Flask handle this automatically
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)  # Adjust as needed
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_DOMAIN'] = None
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=24)
 app.config.update(
     SESSION_COOKIE_SAMESITE='None',
     SESSION_COOKIE_SECURE=True,
-    SESSON_COOKIE_HTTPONLY=True,
     PREFERRED_URL_SCHEME='https',
 )
 
