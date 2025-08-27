@@ -40,7 +40,7 @@ def random_capitalisation(text):
 
 def get_char_set(capAlphabet=True, lowerAlphabet=True, specialChar=True):
     # Define the character set based on user preferences
-    charSet = ''
+    charSet = string.digits
     if capAlphabet:
         charSet += string.ascii_uppercase
     if lowerAlphabet:
