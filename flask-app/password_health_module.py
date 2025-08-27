@@ -46,7 +46,7 @@ def fetch_credentials_batch(connection, user_id, batch_size=25):
                 break
             
             logger.info(f"Fetched batch: {offset + 1} to {offset + len(batch)}")
-            yield batch  # Return this batch
+            yield batch
             offset += len(batch)
             
     except mysql.connector.Error as e:
